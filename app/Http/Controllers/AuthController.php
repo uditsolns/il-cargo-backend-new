@@ -2,70 +2,68 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Models\User;
-use App\Mail\ForgetPasswordMail;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
 use App\Models\PhaseZone;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
     public function register(Request $request)
     {
-       $fields = Validator::make($request->all(), [
-    'email' => 'required|string|unique:users,email',
-    'password' => 'required|string',
-    'phone' => 'required|string|unique:users,phone',
-    // 'role' => 'required',
-    // 'group_id' => 'required',
-    'password_confirmation' => 'required|same:password'
-]);
-
-if ($fields->fails()) {
-    return response()->json(['error' => $fields->errors()], 403);
-}
-
-$user = new User();
-$user->role = $request->role;
-$user->group_id = $request->group_id;
-$user->user_status = $request->user_status;
-$user->channel_partner_id = $request->channel_partner_id;
-$user->fill($request->except('password_confirmation'));
-$user->password = bcrypt($request->password);
-
-$user->save();
-
-// Associate zones with the user
-if ($request->zones) {
-    foreach ($request->zones as $zone) {
-        $zoneId = $zone['zone_id'];
-        // Create a new PhaseZone entry
-        PhaseZone::create([
-            'user_id' => $user->id,
-            'phase_id' => $request->phase_id,
-            'zone_id' => $zoneId,
-            // Add other necessary fields here
+        $fields = Validator::make($request->all(), [
+            'email' => 'required|string|unique:users,email',
+            'password' => 'required|string',
+            'phone' => 'required|string|unique:users,phone',
+            // 'role' => 'required',
+            // 'group_id' => 'required',
+            'password_confirmation' => 'required|same:password'
         ]);
-    }
-}
 
-// Fetch PhaseZone data associated with the user
-$phaseZones = PhaseZone::where('user_id', $user->id)->with('phase', 'zone')->get();
+        if ($fields->fails()) {
+            return response()->json(['error' => $fields->errors()], 403);
+        }
 
-$token = $user->createToken('myapptoken')->plainTextToken;
+        $user = new User();
+        $user->role = $request->role;
+        $user->group_id = $request->group_id;
+        $user->user_status = $request->user_status;
+        $user->channel_partner_id = $request->channel_partner_id;
+        $user->fill($request->except('password_confirmation'));
+        $user->password = bcrypt($request->password);
 
-$user = User::find($user->id);
+        $user->save();
 
-$response = [
-    'user' => $user,
-    'phase_zone' => $phaseZones, // Include the phase zones data in the response
-    'token' => $token
-];
+        // Associate zones with the user
+        if ($request->zones) {
+            foreach ($request->zones as $zone) {
+                $zoneId = $zone['zone_id'];
+                // Create a new PhaseZone entry
+                PhaseZone::create([
+                    'user_id' => $user->id,
+                    'phase_id' => $request->phase_id,
+                    'zone_id' => $zoneId,
+                    // Add other necessary fields here
+                ]);
+            }
+        }
 
-return response($response, 201);
+        // Fetch PhaseZone data associated with the user
+        $phaseZones = PhaseZone::where('user_id', $user->id)->with('phase', 'zone')->get();
+
+        $token = $user->createToken('myapptoken')->plainTextToken;
+
+        $user = User::find($user->id);
+
+        $response = [
+            'user' => $user,
+            'phase_zone' => $phaseZones, // Include the phase zones data in the response
+            'token' => $token
+        ];
+
+        return response($response, 201);
 
     }
 
@@ -76,11 +74,11 @@ return response($response, 201);
             // 'email' => 'required|string',
             'password' => 'required|string'
         ]);
-    
+
         if ($fields->fails()) {
             return response()->json(['error' => $fields->errors()], 403);
         }
-    
+
         // Check email or phone
         $user = null;
         if ($request->has('email')) {
@@ -92,14 +90,14 @@ return response($response, 201);
                 'message' => 'Bad creds'
             ], 401);
         }
-    
+
         // Check password
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response([
                 'message' => 'Bad creds'
             ], 401);
         }
-    
+
         $token = $user->createToken('myapptoken')->plainTextToken;
         $phaseZones = PhaseZone::where('user_id', $user->id)->with('phase', 'zone')->get();
         $response = [
@@ -107,10 +105,9 @@ return response($response, 201);
             'phase_zones' => $phaseZones,
             'token' => $token
         ];
-    
+
         return response($response, 201);
     }
-
 
 
     public function logout(Request $request)
@@ -122,39 +119,45 @@ return response($response, 201);
         ];
     }
 
-    public function forgetPassword(Request $request)
+    public function forgotPassword(Request $request)
     {
-        $fields = Validator::make($request->all(), [
-            'email' => 'required|string|email',
+        $request->validate([
+            'email' => 'required|email',
         ]);
 
-        if ($fields->fails()) {
+        // Send password reset link to user's email
+        Password::sendResetLink($request->only('email'));
 
-            return response()->json(['error' => $fields->errors()], 422);
+        return response()->json([
+            "message" => "Password reset link has been sent to the provided email if it exists."
+        ]);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'token' => 'required',
+            'password' => 'required|min:8|confirmed',
+        ]);
+
+        $status = Password::reset(
+            $request->only('email', 'password', 'password_confirmation', 'token'),
+            function (User $user, $password) {
+                $user->forceFill([
+                    'password' => Hash::make($password),
+                ])->save();
+
+                // Optional: log the user out of other devices
+                $user->tokens()->delete();
+            }
+        );
+
+        if ($status == Password::PASSWORD_RESET) {
+            return response()->json(['message' => 'Password has been reset successfully.']);
         }
-        $user = User::where('email', $request->email)->first();
 
-        if (isset($user)) {
-            $user->forget_password_token = Str::random(32);
-            Mail::to($user->email)->send(new ForgetPasswordMail($user));
-            $user->save();
-
-            $response = [
-                'code' => 200,
-                'status' => 'success',
-                'status_message' => 'Password reset link has been sent to your registered email id. Click on it to reset your password.'
-            ];
-
-            return response()->json($response);
-        }
-
-        $response = [
-            'code' => 404,
-            'status' => 'failed',
-            'status_message' => 'User not found.'
-        ];
-
-        return response($response);
+        return response()->json(['message' => __($status)], 400);
     }
 
     public function updatePassword(Request $request)
@@ -213,7 +216,7 @@ return response($response, 201);
 
             $user = User::create([
                 'email' => $request->email,
-                'password' =>  bcrypt('password'),
+                'password' => bcrypt('password'),
                 'is_google_login' => 1
             ]);
 

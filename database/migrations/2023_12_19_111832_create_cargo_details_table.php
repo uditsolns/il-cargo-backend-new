@@ -29,6 +29,7 @@ class CreateCargoDetailsTable extends Migration
             $table->decimal('dispatch_long', 10, 6);
             $table->decimal('destination_long', 10, 6);
             $table->decimal('destination_lat', 10, 6);
+            $table->foreignId('cosignee_id')->constrained('users')->cascadeOnDelete();
             $table->timestamps();
         });
     }

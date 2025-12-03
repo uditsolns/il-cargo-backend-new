@@ -19,6 +19,7 @@ class CreateGroupsTable extends Migration
             $table->string('address', 255);
             $table->string('city', 20);
             $table->string('gst', 20);
+            $table->string('sop')->nullable();
             $table->timestamps();
         });
     }

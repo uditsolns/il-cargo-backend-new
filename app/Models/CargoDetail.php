@@ -4,13 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CargoDetail extends Model
 {
     use HasFactory;
     use SoftDeletes;
-     
+
     protected $primaryKey = 'id';
     protected $fillable = [
         'veh_reg_no',
@@ -43,13 +44,15 @@ class CargoDetail extends Model
         'group_id',
         'channel_partner_id',
         'user_id',
+        'consignee_id',
+        'remarks',
     ];
-    
+
     public function group()
     {
         return $this->belongsTo(Group::class);
     }
-    
+
     public function photographs()
     {
         return $this->hasMany(Photograph::class, 'cargo_id');
@@ -59,10 +62,14 @@ class CargoDetail extends Model
     {
         return $this->hasMany(Checklist::class, 'cargo_id');
     }
-    
+
    public function checklistPhotos()
     {
         return $this->hasMany(ChecklistPhoto::class);
     }
 
+    public function consignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'consignee_id');
+    }
 }

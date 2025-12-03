@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Mail\ForgotPasswordMail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\HasApiTokens;
-use App\Models\Group;
 
 class User extends Authenticatable
 {
@@ -47,17 +47,17 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
-    
+
     public function group()
     {
         return $this->belongsTo(Group::class);
     }
-    
+
     public function channel()
     {
         return $this->belongsTo(ChannelPartner::class);
     }
-    
+
     public function zones()
     {
         return $this->belongsToMany(Zone::class, 'phase_zones', 'user_id', 'zone_id')->withPivot('phase_id');
@@ -66,5 +66,10 @@ class User extends Authenticatable
     public function phases()
     {
         return $this->belongsToMany(Phase::class, 'phase_zones', 'user_id', 'phase_id')->withPivot('zone_id');
+    }
+
+    public function sendPasswordResetNotification($token): void
+    {
+        Mail::to($this->email)->send(new ForgotPasswordMail($token, $this));
     }
 }

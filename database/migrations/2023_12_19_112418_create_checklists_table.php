@@ -19,6 +19,8 @@ class CreateChecklistsTable extends Migration
             $table->string('answer', 255);
             $table->string('instruction', 255);
             $table->bigInteger('trip_id');
+            $table->string('preferred_compliance')->nullable();
+            $table->string('is_sop_breached')->nullable();
             $table->timestamps();
         });
     }

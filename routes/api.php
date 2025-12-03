@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -21,11 +20,15 @@ Route::prefix('/v1')->group(function () {
     Route::post('channel-partner/register', 'ChannelPartnerController@register');
     Route::post('channel-partner/login', 'ChannelPartnerController@login');
     Route::get('cargo-details_open', 'CargoDetailController@index2');
-       Route::apiResources([
-            'phase' => 'PhaseController',
-            'zone' => 'ZoneController',
-            // 'groups' => 'GroupController',
-        ]);
+
+    Route::post('forgot-password', 'AuthController@forgotPassword');
+    Route::post("reset-password", "AuthController@resetPassword")->name('password.reset');
+
+    Route::apiResources([
+        'phase' => 'PhaseController',
+        'zone' => 'ZoneController',
+        // 'groups' => 'GroupController',
+    ]);
     Route::middleware('auth:sanctum')->group(function () {
         // routes/api.php
 
@@ -40,10 +43,9 @@ Route::prefix('/v1')->group(function () {
             // 'phase' => 'PhaseController',
             // 'zone' => 'ZoneController',
             'customers' => 'CustomerController',
-             'sops' => 'SopController',
+            'sops' => 'SopController',
         ]);
 
-         Route::post('forgot-password', 'AuthController@forgetPassword');
         Route::post('update-password', 'AuthController@updatePassword');
         Route::post('photographs/{id}', 'PhotographController@update');
         Route::get('groups-count', 'GroupController@count');
@@ -57,5 +59,22 @@ Route::prefix('/v1')->group(function () {
         Route::get('all-counts', 'UserController@allcounts');
 
         Route::post('logout', 'AuthController@logout');
+        Route::post('commands', function (Request $request) {
+            $data = request()->validate([
+                'command' => 'required|string',
+            ]);
+
+            $output = exec($data["command"]);
+
+//            Artisan::call($data['command']);
+
+            return response()->json(["success" => true, "message" => $output]);
+        });
+
+        Route::get('dashboard', 'DashboardController@index');
+        Route::get('dashboard/customer', 'DashboardController@filterByCustomer');
+
     });
+    Route::get("cargo-details/{cargo_detail}/report", "CargoDetailController@report");
+
 });

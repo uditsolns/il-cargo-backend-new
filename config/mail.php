@@ -113,6 +113,14 @@ return [
         'paths' => [
             resource_path('views/vendor/mail'),
         ],
+
+        // Custom color configuration
+        'colors' => [
+            'primary' => '#1A4680',    // Replace with your logo's primary color
+            'success' => '#38a169',    // Green for success actions
+            'error' => '#e53e3e',      // Red for error/danger actions
+            'secondary' => '#718096',   // Gray for secondary actions
+        ],
     ],
 
 ];

@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Models\ChecklistMaster;
-use App\Models\User;
-use App\Models\Group;
 use App\Models\ChannelPartner;
+use App\Models\ChecklistMaster;
+use App\Models\Group;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class ChecklistMasterController extends Controller
@@ -14,53 +14,49 @@ class ChecklistMasterController extends Controller
     /**
      * Display a listing of the resource.
      *
-     * @return \Illuminate\Http\Response
+     * @return JsonResponse
      */
     public function index()
     {
-       $authUser = auth()->user();
-// Check if the authenticated user is an admin
-if ($authUser->is_admin == 1) {
-    // If the user is an admin, fetch all checklist masters
-    $checklistMasters = ChecklistMaster::with('group')->latest()->get();
-} 
-elseif ($authUser->role == 'Channel Partner' || $authUser->user_status == 1) {
-    // If the user is a Channel Partner, check if they have a channel_partner_id
-    $channelPartnerId = $authUser->channel_partner_id;
+        $authUser = auth()->user();
+        // Check if the authenticated user is an admin
+        if ($authUser->is_admin == 1) {
+            // If the user is an admin, fetch all checklist masters
+            $checklistMasters = ChecklistMaster::with('group', 'phase', 'zone')->latest()->get();
+        } elseif ($authUser->role == 'Channel Partner' || $authUser->user_status == 1) {
+            // If the user is a Channel Partner, check if they have a channel_partner_id
+            $channelPartnerId = $authUser->channel_partner_id;
 
-    if ($channelPartnerId) {
-        // Fetch the Channel Partner data using the channel_partner_id
-        $channelPartner = ChannelPartner::find($channelPartnerId);
+            if ($channelPartnerId) {
+                // Fetch the Channel Partner data using the channel_partner_id
+                $channelPartner = ChannelPartner::find($channelPartnerId);
 
-        // If the Channel Partner exists, retrieve all groups associated with that Channel Partner
-        if ($channelPartner) {
-            $groups = Group::where('channel_partner_id', $channelPartnerId)->pluck('id');
+                // If the Channel Partner exists, retrieve all groups associated with that Channel Partner
+                if ($channelPartner) {
+                    $groups = Group::where('channel_partner_id', $channelPartnerId)->pluck('id');
 
-            // Fetch all checklist masters associated with these groups, along with group and channel_partner data
-            $checklistMasters = ChecklistMaster::whereIn('group_id', $groups)
-                ->with(['group', 'group.channelPartner'])
-                ->latest()
-                ->get();
+                    // Fetch all checklist masters associated with these groups, along with group and channel_partner data
+                    $checklistMasters = ChecklistMaster::whereIn('group_id', $groups)
+                        ->with(['group', 'phase', 'zone', 'group.channelPartner'])
+                        ->latest()
+                        ->get();
+                } else {
+                    // If the Channel Partner does not exist, return an appropriate response
+                    $checklistMasters = [];
+                }
+            } else {
+                // If the channel_partner_id is not found, return an empty array or any other appropriate response
+                $checklistMasters = [];
+            }
         } else {
-            // If the Channel Partner does not exist, return an appropriate response
-            $checklistMasters = [];
+            // For regular users, fetch only the checklist masters associated with the user's group
+            $groupId = $authUser->group_id;
+            $checklistMasters = ChecklistMaster::where('group_id', $groupId)->with('group', 'phase',
+                'zone')->latest()->get();
         }
-    } else {
-        // If the channel_partner_id is not found, return an empty array or any other appropriate response
-        $checklistMasters = [];
-    }
-}
 
-else {
-    // For regular users, fetch only the checklist masters associated with the user's group
-    $groupId = $authUser->group_id;
-    $checklistMasters = ChecklistMaster::where('group_id', $groupId)->with('group')->latest()->get();
-}
-
-// Return the checklist masters as a JSON response
-return response()->json(['checklist_masters' => $checklistMasters]);
-
-
+        // Return the checklist masters as a JSON response
+        return response()->json(['checklist_masters' => $checklistMasters]);
     }
 
     /**
@@ -76,8 +72,8 @@ return response()->json(['checklist_masters' => $checklistMasters]);
     /**
      * Store a newly created resource in storage.
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @param \Illuminate\Http\Request $request
+     * @return JsonResponse
      */
     public function store(Request $request)
     {
@@ -85,17 +81,20 @@ return response()->json(['checklist_masters' => $checklistMasters]);
             'question' => 'required',
             'instruction' => 'required',
             'group_id' => 'required|exists:groups,id',
+            'phase_id' => 'required|exists:phases,id',
+            'zone_id' => 'required|exists:zones,id',
+            'preferred_compliance' => 'required|string',
             // 'answer' => 'required|max:20',
             // Add validation for other fields
         ]);
-    
+
         if ($validator->fails()) {
             return response()->json(['error' => $validator->errors()], 403);
         }
         $requestData = $request->all();
-    $requestData['group_id'] = auth()->user()->group_id;
+        $requestData['group_id'] = auth()->user()->group_id;
 
-    // $checklistMaster = ChecklistMaster::create($requestData);
+        // $checklistMaster = ChecklistMaster::create($requestData);
         $checklistMaster = ChecklistMaster::create($request->all());
         return response()->json(['checklist_master' => $checklistMaster], 201);
     }
@@ -103,8 +102,8 @@ return response()->json(['checklist_masters' => $checklistMasters]);
     /**
      * Display the specified resource.
      *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
+     * @param int $id
+     * @return JsonResponse
      */
     public function show($id)
     {
@@ -115,7 +114,7 @@ return response()->json(['checklist_masters' => $checklistMasters]);
     /**
      * Show the form for editing the specified resource.
      *
-     * @param  int  $id
+     * @param int $id
      * @return \Illuminate\Http\Response
      */
     public function edit($id)
@@ -133,9 +132,9 @@ return response()->json(['checklist_masters' => $checklistMasters]);
     /**
      * Update the specified resource in storage.
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
+     * @param \Illuminate\Http\Request $request
+     * @param int $id
+     * @return JsonResponse
      */
     public function update(Request $request, $id)
     {
@@ -147,8 +146,8 @@ return response()->json(['checklist_masters' => $checklistMasters]);
     /**
      * Remove the specified resource from storage.
      *
-     * @param  int  $id
-     * @return \Illuminate\Http\Response
+     * @param int $id
+     * @return JsonResponse
      */
     public function destroy($id)
     {
