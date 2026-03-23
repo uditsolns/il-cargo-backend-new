@@ -96,4 +96,5 @@ Route::prefix('/v1')->group(function () {
     });
     Route::get("cargo-details/{cargo_detail}/report", "CargoDetailController@report");
 
+    Route::post("backups/database", DatabaseBackupController::class);
 });
