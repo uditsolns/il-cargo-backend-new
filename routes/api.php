@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\VerificationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -30,6 +31,15 @@ Route::prefix('/v1')->group(function () {
         // 'groups' => 'GroupController',
     ]);
     Route::middleware('auth:sanctum')->group(function () {
+        Route::prefix('verifications')->group(function () {
+            Route::post('/verify-rc', [VerificationController::class, 'verifyRC']);
+            Route::post('/send-aadhaar-otp', [VerificationController::class, 'sendAadharOTP']);
+            Route::post('/verify-aadhaar-otp', [VerificationController::class, 'verifyAadharOTP']);
+            Route::post('/verify-dl', [VerificationController::class, 'verifyDL']);
+        });
+
+        Route::get("/cargo-details/export", 'CargoDetailController@export');
+
         // routes/api.php
 
         Route::apiResources([
@@ -73,6 +83,15 @@ Route::prefix('/v1')->group(function () {
 
         Route::get('dashboard', 'DashboardController@index');
         Route::get('dashboard/customer', 'DashboardController@filterByCustomer');
+
+        Route::prefix('api-usage')
+            ->controller(ApiUsageReportController::class)
+            ->group(function () {
+                Route::get('summary',     'summary');
+                Route::get('by-endpoint', 'byEndpoint');
+                Route::get('by-user',     'byUser');
+                Route::get('daily-trend', 'dailyTrend');
+            });
 
     });
     Route::get("cargo-details/{cargo_detail}/report", "CargoDetailController@report");

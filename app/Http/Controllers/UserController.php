@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\WelcomeUserMail;
+use App\Models\ApiUsageLog;
 use App\Models\CargoDetail;
 use App\Models\Checklist;
 use App\Models\ChecklistMaster;
@@ -215,6 +216,7 @@ class UserController extends Controller
                 'group' => $groupCount,
                 'user' => $userCount,
                 'photograph' => $photographCount,
+                'apis' => ApiUsageLog::count(),
             ]);
         } elseif ($user->role == 'Channel Partner') {
             // User is a Channel Partner, show counts related to the Channel Partner

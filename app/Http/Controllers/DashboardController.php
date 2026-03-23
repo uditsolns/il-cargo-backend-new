@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ApiUsageLog;
 use App\Models\CargoDetail;
 use App\Models\Group;
 use App\Models\User;
@@ -36,7 +37,7 @@ class DashboardController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'counts' => $this->getCounts($dateFilter),
+                'counts' => $this->getCounts(),
                 'graphs' => $this->getGraphData($fromDate, $toDate),
                 'inspection_summary' => $this->getInspectionSummary($dateFilter),
             ],
@@ -47,27 +48,25 @@ class DashboardController extends Controller
         ]);
     }
 
-    private function getCounts($dateFilter)
+    private function getCounts()
     {
         // Count customers (groups)
         $customersCount = Group::query()
-            ->when($dateFilter, $dateFilter)
             ->count();
 
         // Count users
         $usersCount = User::query()
-            ->when($dateFilter, $dateFilter)
             ->count();
 
         // Count dispatches (cargo details)
         $dispatchCount = CargoDetail::query()
-            ->when($dateFilter, $dateFilter)
             ->count();
 
         return [
             'customers' => $customersCount,
             'users' => $usersCount,
             'dispatches' => $dispatchCount,
+            'apis' => ApiUsageLog::count(),
         ];
     }
 
@@ -85,7 +84,7 @@ class DashboardController extends Controller
             DB::raw('DATE(created_at) as date'),
             DB::raw('COUNT(*) as count')
         )
-            ->whereBetween('created_at', [$fromDate, $toDate])
+            // ->whereBetween('created_at', [$fromDate, $toDate])
             ->groupBy('date')
             ->orderBy('date')
             ->get()
@@ -97,7 +96,7 @@ class DashboardController extends Controller
             DB::raw('DATE(created_at) as date'),
             DB::raw('COUNT(*) as count')
         )
-            ->whereBetween('created_at', [$fromDate, $toDate])
+            // ->whereBetween('created_at', [$fromDate, $toDate])
             ->groupBy('date')
             ->orderBy('date')
             ->get()

@@ -46,6 +46,13 @@ class CargoDetail extends Model
         'user_id',
         'consignee_id',
         'remarks',
+        'dl_no',
+        'dl_dob',
+        'driver_aadhaar_no',
+        'is_rc_verified',
+        'is_dl_verified',
+        'is_aadhaar_verified',
+        'is_verification_done',
     ];
 
     public function group()

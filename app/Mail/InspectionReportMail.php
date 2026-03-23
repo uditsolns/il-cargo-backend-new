@@ -88,44 +88,52 @@ class InspectionReportMail extends Mailable implements ShouldQueue
             return [];
         }
 
+
         // Group by zone (which is stored in phase key due to data structure)
-        $locationsByZone = collect($photographs)
-            ->filter(function ($photo) {
-                return !empty($photo['latitude']) && !empty($photo['longitude']);
-            })
+        $allLocations = collect($photographs)
             ->groupBy(function ($photo) {
                 return $photo['phase']['name'] ?? 'Unknown Zone';
             })
             ->map(function ($zonePhotos) {
-                // Get the first photo from each zone for location
-                $firstPhoto = $zonePhotos->first();
+                // Sort photos by time before getting the first one
+                $sortedPhotos = $zonePhotos->sortBy('created_at');
+                $firstPhoto = $sortedPhotos->first();
+
+                $hasCoordinates = !empty($firstPhoto['latitude']) && !empty($firstPhoto['longitude']);
+
                 return [
                     'zone_name' => $firstPhoto['phase']['name'] ?? 'Unknown Zone',
-                    'latitude' => (float)$firstPhoto['latitude'],
-                    'longitude' => (float)$firstPhoto['longitude'],
+                    'latitude' => $hasCoordinates ? (float)$firstPhoto['latitude'] : null,
+                    'longitude' => $hasCoordinates ? (float)$firstPhoto['longitude'] : null,
                     'time' => \Carbon\Carbon::parse($firstPhoto['created_at'])->format('d/m/Y H:i'),
                     'raw_time' => $firstPhoto['created_at'],
-                    'photo_count' => $zonePhotos->count() // Add photo count
+                    'photo_count' => $zonePhotos->count(),
+                    'has_coordinates' => $hasCoordinates
                 ];
             })
             ->sortBy('raw_time')
             ->values();
 
-        if ($locationsByZone->isEmpty()) {
+        if ($allLocations->isEmpty()) {
             return [];
         }
 
-        // Calculate horizontal positions for timeline layout
-        $totalLocations = $locationsByZone->count();
+        // Filter only locations with coordinates for map display
+        $locationsWithCoordinates = $allLocations->filter(function ($location) {
+            return $location['has_coordinates'];
+        })->values();
 
-        return $locationsByZone->map(function ($location, $index) use ($totalLocations) {
-            if ($totalLocations == 1) {
+        // Calculate horizontal positions only for locations with coordinates
+        $totalLocationsForMap = $locationsWithCoordinates->count();
+
+        $locationsWithCoordinates = $locationsWithCoordinates->map(function ($location, $index) use ($totalLocationsForMap) {
+            if ($totalLocationsForMap == 1) {
                 $x = 50; // Center position for single location
             } else {
                 // Distribute evenly across horizontal space with padding
                 $padding = 10; // 10% padding on each side
                 $availableWidth = 100 - (2 * $padding);
-                $x = $padding + ($index * $availableWidth / ($totalLocations - 1));
+                $x = $padding + ($index * $availableWidth / ($totalLocationsForMap - 1));
             }
 
             return array_merge($location, [
@@ -133,6 +141,12 @@ class InspectionReportMail extends Mailable implements ShouldQueue
                 'y' => 40 // Fixed vertical center position
             ]);
         })->toArray();
+
+        // Return both: all locations for table, locations with coordinates for map
+        return [
+            'all' => $allLocations->toArray(),
+            'map' => $locationsWithCoordinates
+        ];
     }
 
     /**
@@ -184,8 +198,9 @@ class InspectionReportMail extends Mailable implements ShouldQueue
         $data = [
             'cargo' => $this->cargo->toArray(),
             'summary' => $this->complianceSummary,
-            'locationData' => $locationData,
-            'mapImageUrl' => $this->generateMapImageUrl($locationData)
+            'allLocations' => $locationData['all'] ?? [],  // For table display
+            'mapLocations' => $locationData['map'] ?? [],  // For map display
+            'mapImageUrl' => $this->generateMapImageUrl($locationData['map'] ?? [])
         ];
 
         return Pdf::loadView('pdf.inspection-report', $data)

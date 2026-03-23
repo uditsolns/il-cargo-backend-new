@@ -31,46 +31,58 @@ class CargoDetailController extends Controller
         return response()->json(['cargo_details' => $cargoDetails]);
     }
 
-    public function index()
+    public function index(Request $request)
     {
+        $perPage = $request->input('per_page', 15);
+        $search = $request->input('search');
+        $onlyPending = $request->input('only_pending', false);
         $user = Auth::user();
-        // Check if the user is an admin
-        if ($user->is_admin == 1) {
-            // If the user is an admin, show all cargo details
-            $cargoDetails = CargoDetail::with('photographs', 'checklists', 'group', 'photographs.zone', 'photographs.phase', 'consignee')
-                ->orderByDesc('id')
-                ->get();
-        } elseif ($user->user_status == 1) {
-            $cargoDetails = CargoDetail::with('photographs', 'checklists', 'group', 'consignee')
-                ->where('channel_partner_id', $user->channel_partner_id)
-                ->orderByDesc('id')
-                ->get();
-        } elseif ($user->role == "Insured's Dispatch Supervisor" || $user->role == "Insured's Representative") {
-            $cargoDetails = CargoDetail::with('photographs', 'checklists', 'group', 'consignee')
-                ->where('group_id', $user->group_id)
-                ->orderByDesc('id')
-                ->get();
-        } elseif ($user->role == 'Channel Partner') {
-            // If the user is a channel partner, retrieve cargo details based on their group's parent_user_id
-            $cargoDetails = CargoDetail::with('photographs', 'checklists', 'group', 'consignee')
-                ->where('channel_partner_id', $user->id)
-                ->orderByDesc('id')
-                ->get();
-        } elseif ($user->role == 'Consignee') {
-            $cargoDetails = CargoDetail::with(['photographs', 'checklists', 'group', 'consignee', 'group.phases', 'photographs.zone', 'photographs.phase', 'consignee'])
-                ->where('consignee_id', $user->id)
-                ->orderByDesc('id')
-                ->get();
-        } else {
-            // dd($user);
-            // For simple users, show cargo details associated with their user ID
-            $cargoDetails = CargoDetail::with('photographs', 'checklists', 'group.phases', 'photographs.zone', 'photographs.phase', 'consignee')
-                ->where('group_id', $user->group_id)
-                ->orderByDesc('id')
-                ->get();
+
+        $baseRelations = ['photographs', 'checklists', 'group', 'consignee'];
+        $query = CargoDetail::with($baseRelations)->orderByDesc('id');
+
+        // Search functionality
+        if ($search) {
+            $query->where(function($q) use ($search) {
+                $q->where('cargo_unit_serial_no', 'like', "%{$search}%")
+                    ->orWhere('veh_reg_no', 'like', "%{$search}%")
+                    ->orWhere('serial_no', 'like', "%{$search}%");
+            });
         }
 
-        return response()->json(['cargo_details' => $cargoDetails]);
+        if ($onlyPending) {
+            $query->where(function($q) {
+                $q->whereNull('pending_servey')
+                    ->orWhere('pending_servey', 0);
+            });
+        }
+
+        // Admin: see everything
+        if ($user->is_admin == 1) {
+            $query->with(['photographs.zone', 'photographs.phase']);
+        }
+        // Channel partner status user
+        elseif ($user->user_status == 1) {
+            $query->where('channel_partner_id', $user->channel_partner_id);
+        }
+        // Role-based filtering
+        elseif (in_array($user->role, ["Insured's Dispatch Supervisor", "Insured's Representative"])) {
+            $query->where('group_id', $user->group_id);
+        }
+        elseif ($user->role == 'Channel Partner') {
+            $query->where('channel_partner_id', $user->id);
+        }
+        elseif ($user->role == 'Consignee') {
+            $query->with(['group.phases', 'photographs.zone', 'photographs.phase'])
+                ->where('consignee_id', $user->id);
+        }
+        // Regular users
+        else {
+            $query->with(['group.phases', 'photographs.zone', 'photographs.phase'])
+                ->where('group_id', $user->group_id);
+        }
+
+        return response()->json($query->paginate($perPage));
     }
 
     /**
@@ -192,6 +204,13 @@ class CargoDetailController extends Controller
                 'channel_partner_id' => isset($channel_partner_id) ? $channel_partner_id : null,
                 'consignee_id' => $consignee_id,
                 'remarks' => $request->input('remarks') ?? null,
+                'dl_no' => $request->input('dl_no'),
+                'dl_dob' => $request->input('dl_dob'),
+                'driver_aadhaar_no' => $request->input('driver_aadhaar_no'),
+                'is_rc_verified' => $request->input('is_rc_verified'),
+                'is_dl_verified' => $request->input('is_dl_verified'),
+                'is_aadhaar_verified' => $request->input('is_aadhaar_verified'),
+                'is_verification_done' => $request->input('is_verification_done'),
             ]
         );
 
@@ -312,10 +331,12 @@ class CargoDetailController extends Controller
         // Retrieve the updated or inserted CargoDetail
         $cargoDetail = CargoDetail::where('cargo_unit_serial_no', $request->input('cargo_unit_serial_no'))->first();
 
-        $cargoDetail->consignee()->update([
-            'email' => $request->input('consignee_email') ?? $cargoDetail->consignee->email,
-            'phone' => $request->input('consignee_phone')  ?? $cargoDetail->consignee->phone,
-        ]);
+        if ($cargoDetail->consignee) {
+            $cargoDetail->consignee()->update([
+                'email' => $request->input('consignee_email') ?? $cargoDetail->consignee->email,
+                'phone' => $request->input('consignee_phone') ?? $cargoDetail->consignee->phone,
+            ]);
+        }
 
         if ($cargoDetail && $cargoDetail->pending_survey == 1) {
             // sending inspection mail
@@ -346,5 +367,54 @@ class CargoDetailController extends Controller
         $pdf = (new InspectionReportMail($cargoDetail))->generatePdfReport();
 
         return $pdf->stream("{$cargoDetail->cargo_unit_serial_no}-report.pdf");
+    }
+
+    public function export(Request $request)
+    {
+        $request->validate([
+            'from_date' => ['required', 'date', 'before_or_equal:to_date'],
+            'to_date' => ['required', 'date', 'after_or_equal:from_date',],
+        ]);
+
+        $fromDate = $request->input('from_date');
+        $toDate = $request->input('to_date');
+        $groupId = $request->input('group_id');
+        $user = Auth::user();
+
+        $baseRelations = ['group', 'consignee'];
+        $query = CargoDetail::with($baseRelations)->orderByDesc('id');
+
+        // Date range filtering
+        if ($fromDate && $toDate) {
+            $query->whereDate('created_at', '>=', $fromDate)
+                ->whereDate('created_at', '<=', $toDate);
+        }
+
+        // Admin: see everything
+        if ($user->is_admin == 1) {
+            if ($groupId) {
+                $query->where('group_id', $groupId);
+            }
+        }
+        // Channel partner status user
+        elseif ($user->user_status == 1) {
+            $query->where('channel_partner_id', $user->channel_partner_id);
+        }
+        // Role-based filtering
+        elseif (in_array($user->role, ["Insured's Dispatch Supervisor", "Insured's Representative"])) {
+            $query->where('group_id', $user->group_id);
+        }
+        elseif ($user->role == 'Channel Partner') {
+            $query->where('channel_partner_id', $user->id);
+            // Filter by group_id if provided
+            if ($groupId) {
+                $query->where('group_id', $groupId);
+            }
+        }
+        elseif ($user->role == 'Consignee') {
+            $query->where('consignee_id', $user->id);
+        }
+
+        return response()->json(['cargo_details' => $query->get()]);
     }
 }
