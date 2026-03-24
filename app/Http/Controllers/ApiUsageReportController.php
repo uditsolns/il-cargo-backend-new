@@ -40,16 +40,16 @@ class ApiUsageReportController extends Controller
     private function resolveDateRange(Request $request): array
     {
         $request->validate([
-            'from' => ['nullable', 'date'],
-            'to'   => ['nullable', 'date', 'after_or_equal:from'],
+            'from_date' => ['nullable', 'date'],
+            'to_date'   => ['nullable', 'date', 'after_or_equal:from'],
         ]);
 
-        $from = $request->filled('from')
-            ? Carbon::parse($request->input('from'))->startOfDay()
+        $from = $request->filled('from_date')
+            ? Carbon::parse($request->input('from_date'))->startOfDay()
             : Carbon::now()->startOfMonth();
 
-        $to = $request->filled('to')
-            ? Carbon::parse($request->input('to'))->endOfDay()
+        $to = $request->filled('to_date')
+            ? Carbon::parse($request->input('to_date'))->endOfDay()
             : Carbon::now()->endOfDay();
 
         // Safety cap: never allow more than 90 days in one query
