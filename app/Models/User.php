@@ -19,14 +19,14 @@ class User extends Authenticatable
      * @var array<int, string>
      */
     protected $fillable = [
-        'name',
-        'email',
-        'password',
-        'role',
-        'group_id',
-        'phone',
-        'channel_partner_id',
-        'user_status',
+        "name",
+        "email",
+        "password",
+        "role",
+        "group_id",
+        "phone",
+        "channel_partner_id",
+        "user_status",
     ];
 
     /**
@@ -34,10 +34,7 @@ class User extends Authenticatable
      *
      * @var array<int, string>
      */
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
+    protected $hidden = ["password", "remember_token"];
 
     /**
      * The attributes that should be cast.
@@ -45,7 +42,7 @@ class User extends Authenticatable
      * @var array<string, string>
      */
     protected $casts = [
-        'email_verified_at' => 'datetime',
+        "email_verified_at" => "datetime",
     ];
 
     public function group()
@@ -60,16 +57,36 @@ class User extends Authenticatable
 
     public function zones()
     {
-        return $this->belongsToMany(Zone::class, 'phase_zones', 'user_id', 'zone_id')->withPivot('phase_id');
+        return $this->belongsToMany(
+            Zone::class,
+            "phase_zones",
+            "user_id",
+            "zone_id",
+        )->withPivot("phase_id");
     }
 
     public function phases()
     {
-        return $this->belongsToMany(Phase::class, 'phase_zones', 'user_id', 'phase_id')->withPivot('zone_id');
+        return $this->belongsToMany(
+            Phase::class,
+            "phase_zones",
+            "user_id",
+            "phase_id",
+        )->withPivot("zone_id");
     }
 
     public function sendPasswordResetNotification($token): void
     {
         Mail::to($this->email)->send(new ForgotPasswordMail($token, $this));
+    }
+
+    public function assignedTrips()
+    {
+        return $this->hasMany(CargoDetail::class, "driver_id");
+    }
+
+    public function videoWatchRecords()
+    {
+        return $this->hasMany(VideoWatchRecord::class, "driver_id");
     }
 }

@@ -60,17 +60,20 @@ class GroupController extends Controller
             return response()->json(['error' => $validator->errors()], 403);
         }
 
+        $monthFolder = now()->format('Y-m');
+
         if ($request->hasFile('photo')) {
             $photo = $request->file('photo');
-            $photoFileName = $photo->getClientOriginalName();
-            $photo->storeAs('public/groups', $photoFileName);
+            $photoFileName = $monthFolder . '/' . $photo->getClientOriginalName();
+            $photo->storeAs('public/groups/' . $monthFolder, $photo->getClientOriginalName());
         }
 
         $sopFileName = null;
         if ($request->hasFile('sop')) {
             $sop = $request->file('sop');
-            $sopFileName = $sop->getClientOriginalName() . now()->timestamp . '.' . $sop->getClientOriginalExtension();
-            $sop->storeAs('public/groups', $sopFileName);
+            $rawSopName = $sop->getClientOriginalName() . now()->timestamp . '.' . $sop->getClientOriginalExtension();
+            $sop->storeAs('public/groups/' . $monthFolder, $rawSopName);
+            $sopFileName = $monthFolder . '/' . $rawSopName;
         }
 
         $additionalEmails = $request->input('additional_emails');
@@ -131,12 +134,15 @@ class GroupController extends Controller
         $group = Group::findOrFail($id);
 
         // Check if a file is present in the request
+        $monthFolder = now()->format('Y-m');
+
         $photoFileName = null;
         if ($request->hasFile('photo')) {
             // Process file upload
             $photo = $request->file('photo');
-            $photoFileName = $photo->getClientOriginalName();
-            $photo->storeAs('public/groups', $photoFileName);
+            $rawPhotoName = $photo->getClientOriginalName();
+            $photo->storeAs('public/groups/' . $monthFolder, $rawPhotoName);
+            $photoFileName = $monthFolder . '/' . $rawPhotoName;
         }
 
         $sopFileName = null;
@@ -147,8 +153,9 @@ class GroupController extends Controller
             }
 
             $sop = $request->file('sop');
-            $sopFileName = $sop->getClientOriginalName() . now()->timestamp . '.' . $sop->getClientOriginalExtension();
-            $sop->storeAs('public/groups', $sopFileName);
+            $rawSopName = $sop->getClientOriginalName() . now()->timestamp . '.' . $sop->getClientOriginalExtension();
+            $sop->storeAs('public/groups/' . $monthFolder, $rawSopName);
+            $sopFileName = $monthFolder . '/' . $rawSopName;
         }
 
         // Get additional emails from the request

@@ -43,7 +43,7 @@ return response()->json(['photographs' => $photographs]);
     $name = $request->input('name');
     $cargoId = $request->input('cargo_id');
     $phaseId = $request->input('phase_id');
-    
+
     \Log::info("Palette No: ". $request->input("palette_no"));
 
     // Check if a photograph with the same type, name, and cargo_id exists
@@ -176,7 +176,7 @@ return response()->json(['photographs' => $photographs]);
     }
         dd($request->input('type'));
     // Check if the type is already there, then update it
-    if ($existingPhotograph = Photograph::where('type', $request->input('type'))->first()) 
+    if ($existingPhotograph = Photograph::where('type', $request->input('type'))->first())
     {
         // Update other fields
         $existingPhotograph->name = $request->input('name');
@@ -185,7 +185,7 @@ return response()->json(['photographs' => $photographs]);
         $existingPhotograph->latitude = $request->input('latitude');
         $existingPhotograph->palette_no = $request->input('palette_no');
         $existingPhotograph->save();
-        
+
         return response()->json(['photograph' => $existingPhotograph]);
     }
 
