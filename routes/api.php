@@ -106,6 +106,12 @@ Route::prefix("/v1")->group(function () {
                 Route::post("selfie", "selfie");
                 Route::post("complete", "complete");
             });
+        
+        Route::get('video-watch-records', [VideoWatchRecordController::class, 'index']);
+        Route::get('drivers/{user}/video-watch-records', [VideoWatchRecordController::class, 'forDriver']);
+        Route::get('video-tutorials/{videoTutorial}/watch-records', [VideoWatchRecordController::class, 'forVideo']);
+        Route::get('cargo-details/{cargoDetail}/video-tutorials', [CargoDetailController::class, 'videoTutorials']);
+
 
         Route::post("logout", "AuthController@logout");
         Route::post("commands", function (Request $request) {

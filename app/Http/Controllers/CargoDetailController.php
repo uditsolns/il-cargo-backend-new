@@ -8,6 +8,7 @@ use App\Models\CargoDetail;
 use App\Models\PhaseZone;
 use App\Models\User;
 use App\Services\VideoWatchService;
+use App\Models\VideoWatchRecord;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
@@ -539,6 +540,48 @@ class CargoDetailController extends Controller
         // dd($car)
         $cargoDetail->delete();
         return response()->json("Deleted", 200);
+    }
+
+    /**
+     * GET /cargo-details/{cargoDetail}/video-tutorials
+     * Per-trip checklist: every video assigned to this trip, with the
+     * driver's status for each one.
+     */
+    public function videoTutorials(CargoDetail $cargoDetail)
+    {
+        $videos = $cargoDetail->videoTutorials()->get(['video_tutorials.id', 'title', 'description', 'video_url']);
+
+        $watchRecords = $cargoDetail->driver_id
+            ? VideoWatchRecord::where('driver_id', $cargoDetail->driver_id)
+                ->whereIn('video_tutorial_id', $videos->pluck('id'))
+                ->with('assistedBy:id,name')
+                ->get()
+                ->keyBy('video_tutorial_id')
+            : collect();
+
+        $result = $videos->map(function ($video) use ($watchRecords) {
+            $record = $watchRecords->get($video->id);
+
+            return [
+                'id' => $video->id,
+                'title' => $video->title,
+                'description' => $video->description,
+                'video_url' => $video->video_url,
+                'status' => $record->status ?? 'not_started', // not_started | in_progress | completed
+                'watched_at' => $record->completed_at ?? null,
+                'selfie_url' => $record->selfie_url ?? null,
+                'is_assisted' => $record->is_assisted ?? false,
+                'assisted_by' => $record?->assistedBy ? [
+                    'id' => $record->assistedBy->id,
+                    'name' => $record->assistedBy->name,
+                ] : null,
+            ];
+        });
+
+        return response()->json([
+            'driver_videos_status' => $cargoDetail->driver_videos_status,
+            'video_tutorials' => $result,
+        ]);
     }
 
     public function report(CargoDetail $cargoDetail)
