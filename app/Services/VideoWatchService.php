@@ -102,27 +102,53 @@ class VideoWatchService
     }
 
     /**
-     * Videos applicable to any of the driver's trips that they haven't
-     * completed yet. Returns tutorial fields only - no cargo/dispatch data.
+     * Every video applicable to the driver's trips that isn't done yet -
+     * one row per video, `status` tells the frontend what to do with it.
+     * A video only ever reaches "watched" if it has a test attached
+     * (completeWatch() takes a test-less video straight to "completed"),
+     * so `status === "watched"` unambiguously means "take the test", and
+     * anything else means "watch it" - no separate has-test flag needed.
+     * A failed attempt resets the record to "not_started" (see
+     * VideoTestService::submitAttempt()), which naturally brings the video
+     * back into this same list rather than needing separate handling.
      */
-    public function pendingVideosForDriver(User $driver)
+    public function pendingVideoTutorialsForDriver(User $driver)
     {
-        $videoIds = DB::table("cargo_detail_video")
+        $videoIds = $this->applicableVideoIdsForDriver($driver);
+
+        $records = VideoWatchRecord::where("driver_id", $driver->id)
+            ->whereIn("video_tutorial_id", $videoIds)
+            ->get()
+            ->keyBy("video_tutorial_id");
+
+        return VideoTutorial::where("is_active", true)
+            ->whereIn("id", $videoIds)
+            ->get(["id", "title", "description", "video_url"])
+            ->map(function (VideoTutorial $video) use ($records) {
+                $record = $records->get($video->id);
+
+                return [
+                    "id" => $video->id,
+                    "title" => $video->title,
+                    "description" => $video->description,
+                    "video_url" => $video->video_url,
+                    "status" => $record->status ?? "not_started",
+                    "video_watch_record_id" => $record?->id,
+                ];
+            })
+            ->reject(fn(array $video) => $video["status"] === "completed")
+            ->values();
+    }
+
+    private function applicableVideoIdsForDriver(User $driver)
+    {
+        return DB::table("cargo_detail_video")
             ->whereIn(
                 "cargo_detail_id",
                 CargoDetail::where("driver_id", $driver->id)->pluck("id"),
             )
             ->pluck("video_tutorial_id")
             ->unique();
-
-        $completedIds = VideoWatchRecord::where("driver_id", $driver->id)
-            ->where("status", "completed")
-            ->whereIn("video_tutorial_id", $videoIds)
-            ->pluck("video_tutorial_id");
-
-        return VideoTutorial::where("is_active", true)
-            ->whereIn("id", $videoIds->diff($completedIds))
-            ->get(["id", "title", "description", "video_url"]);
     }
 
     /**
@@ -176,6 +202,12 @@ class VideoWatchService
         );
     }
 
+    /**
+     * Marks watching finished. If the video has no test, that's the whole
+     * requirement and it goes straight to "completed" (unchanged prior
+     * behavior). If it has a test, it stops at "watched" - "completed" is
+     * only reached once VideoTestService::submitAttempt() records a pass.
+     */
     public function completeWatch(
         User $driver,
         VideoTutorial $video,
@@ -185,9 +217,12 @@ class VideoWatchService
             ->where("status", "in_progress")
             ->firstOrFail();
 
+        $hasTest = $video->videoTest()->exists();
+
         $record->update([
-            "status" => "completed",
-            "completed_at" => now(),
+            "status" => $hasTest ? "watched" : "completed",
+            "watched_at" => now(),
+            "completed_at" => $hasTest ? null : now(),
         ]);
 
         $this->recalculateStatusForDriverVideo($driver->id, $video->id);

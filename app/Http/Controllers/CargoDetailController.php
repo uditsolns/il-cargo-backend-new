@@ -549,31 +549,47 @@ class CargoDetailController extends Controller
      */
     public function videoTutorials(CargoDetail $cargoDetail)
     {
-        $videos = $cargoDetail->videoTutorials()->get(['video_tutorials.id', 'title', 'description', 'video_url']);
+        abort_unless(
+            CargoDetail::visibleTo(Auth::user())->whereKey($cargoDetail->id)->exists(),
+            403,
+            'You do not have access to this trip.',
+        );
+
+        $videos = $cargoDetail->videoTutorials()
+            ->with('videoTest')
+            ->get(['video_tutorials.id', 'title', 'description', 'video_url']);
 
         $watchRecords = $cargoDetail->driver_id
             ? VideoWatchRecord::where('driver_id', $cargoDetail->driver_id)
                 ->whereIn('video_tutorial_id', $videos->pluck('id'))
-                ->with('assistedBy:id,name')
+                ->with(['assistedBy:id,name', 'testAttempts'])
                 ->get()
                 ->keyBy('video_tutorial_id')
             : collect();
 
         $result = $videos->map(function ($video) use ($watchRecords) {
             $record = $watchRecords->get($video->id);
+            $attempts = $record?->testAttempts ?? collect();
 
             return [
                 'id' => $video->id,
                 'title' => $video->title,
                 'description' => $video->description,
                 'video_url' => $video->video_url,
-                'status' => $record->status ?? 'not_started', // not_started | in_progress | completed
-                'watched_at' => $record->completed_at ?? null,
+                'status' => $record->status ?? 'not_started', // not_started | in_progress | watched | completed
+                'watched_at' => $record->watched_at ?? null,
                 'selfie_url' => $record->selfie_url ?? null,
                 'is_assisted' => $record->is_assisted ?? false,
                 'assisted_by' => $record?->assistedBy ? [
                     'id' => $record->assistedBy->id,
                     'name' => $record->assistedBy->name,
+                ] : null,
+                'test' => $video->videoTest ? [
+                    'pass_percentage' => $video->videoTest->pass_percentage,
+                    'attempts_count' => $attempts->count(),
+                    'best_score_percent' => $attempts->max('score_percent'),
+                    'passed' => $attempts->contains('passed', true),
+                    'last_attempt_at' => $attempts->first()?->submitted_at,
                 ] : null,
             ];
         });

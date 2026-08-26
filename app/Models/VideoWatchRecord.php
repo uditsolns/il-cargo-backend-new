@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class VideoWatchRecord extends Model
 {
@@ -18,6 +19,7 @@ class VideoWatchRecord extends Model
         "latitude",
         "longitude",
         "started_at",
+        "watched_at",
         "completed_at",
         "status",
         "is_assisted",
@@ -27,6 +29,7 @@ class VideoWatchRecord extends Model
     protected $casts = [
         "selfie_captured_at" => "datetime",
         "started_at" => "datetime",
+        "watched_at" => "datetime",
         "completed_at" => "datetime",
         "is_assisted" => "boolean",
     ];
@@ -60,6 +63,11 @@ class VideoWatchRecord extends Model
     public function assistedBy()
     {
         return $this->belongsTo(User::class, "assisted_by_user_id");
+    }
+
+    public function testAttempts()
+    {
+        return $this->hasMany(VideoTestAttempt::class)->latest("submitted_at");
     }
 
     public function isCompleted(): bool

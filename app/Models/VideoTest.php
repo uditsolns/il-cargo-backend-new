@@ -5,38 +5,35 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class VideoTutorial extends Model
+class VideoTest extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        "title",
-        "description",
-        "video_url",
+        "video_tutorial_id",
+        "pass_percentage",
         "is_active",
         "created_by",
     ];
 
     protected $casts = [
         "is_active" => "boolean",
+        "pass_percentage" => "integer",
     ];
 
-    public function cargoDetails()
+    public function videoTutorial()
     {
-        return $this->belongsToMany(
-            CargoDetail::class,
-            "cargo_detail_video",
-        )->withTimestamps();
+        return $this->belongsTo(VideoTutorial::class);
     }
 
-    public function watchRecords()
+    public function questions()
     {
-        return $this->hasMany(VideoWatchRecord::class);
+        return $this->hasMany(VideoTestQuestion::class)->orderBy("position");
     }
 
-    public function videoTest()
+    public function attempts()
     {
-        return $this->hasOne(VideoTest::class);
+        return $this->hasMany(VideoTestAttempt::class);
     }
 
     public function creator()

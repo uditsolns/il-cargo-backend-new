@@ -1,9 +1,9 @@
 <?php
 
+use App\Http\Controllers\CargoDetailController;
 use App\Http\Controllers\VerificationController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\DriverVideoController;
-use App\Http\Controllers\AssistedVideoController;
+use App\Http\Controllers\VideoWatchRecordController;
 
 /*
 |--------------------------------------------------------------------------
@@ -91,25 +91,33 @@ Route::prefix("/v1")->group(function () {
         Route::get("all-counts", "UserController@allcounts");
 
         Route::prefix("driver")
-            ->controller(DriverVideoController::class)
+            // Bare string, not ::class - RouteServiceProvider's $namespace
+            // prepends "App\Http\Controllers" already; the FQCN form
+            // double-prepends it and 404s every route in this group.
+            ->controller("DriverVideoController")
             ->group(function () {
                 Route::get("videos/pending", "pending");
                 Route::post("videos/{videoTutorial}/selfie", "selfie");
                 Route::post("videos/{videoTutorial}/complete", "complete");
+                Route::get("videos/{videoTutorial}/test", "showTest");
+                Route::post("videos/{videoTutorial}/test", "submitTest");
             });
 
         Route::prefix(
             "cargo-details/{cargoDetail}/assisted-videos/{videoTutorial}",
         )
-            ->controller(AssistedVideoController::class)
+            ->controller("AssistedVideoController")
             ->group(function () {
                 Route::post("selfie", "selfie");
                 Route::post("complete", "complete");
+                Route::get("test", "showTest");
+                Route::post("test", "submitTest");
             });
-        
+
         Route::get('video-watch-records', [VideoWatchRecordController::class, 'index']);
         Route::get('drivers/{user}/video-watch-records', [VideoWatchRecordController::class, 'forDriver']);
         Route::get('video-tutorials/{videoTutorial}/watch-records', [VideoWatchRecordController::class, 'forVideo']);
+        Route::get('video-tutorials/{videoTutorial}/test-attempts', [VideoWatchRecordController::class, 'forVideoTests']);
         Route::get('cargo-details/{cargoDetail}/video-tutorials', [CargoDetailController::class, 'videoTutorials']);
 
 

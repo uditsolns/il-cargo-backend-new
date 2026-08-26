@@ -96,4 +96,40 @@ class CargoDetail extends Model
             "cargo_detail_video",
         )->withTimestamps();
     }
+
+    /**
+     * Same visibility rule already used by CargoDetailController::index() -
+     * extracted here so other endpoints (e.g. the per-trip video/test
+     * checklist) can authorize against a single trip without duplicating
+     * the role/group logic.
+     */
+    public function scopeVisibleTo($query, User $user)
+    {
+        if ($user->is_admin == 1) {
+            return $query;
+        }
+
+        if ($user->user_status == 1) {
+            return $query->where("channel_partner_id", $user->channel_partner_id);
+        }
+
+        if (
+            in_array($user->role, [
+                "Insured's Dispatch Supervisor",
+                "Insured's Representative",
+            ])
+        ) {
+            return $query->where("group_id", $user->group_id);
+        }
+
+        if ($user->role == "Channel Partner") {
+            return $query->where("channel_partner_id", $user->id);
+        }
+
+        if ($user->role == "Consignee") {
+            return $query->where("consignee_id", $user->id);
+        }
+
+        return $query->where("group_id", $user->group_id);
+    }
 }
