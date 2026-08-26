@@ -47,7 +47,7 @@ class CargoDetailController extends Controller
         $onlyPending = $request->input("only_pending", false);
         $user = Auth::user();
 
-        $baseRelations = ["photographs", "checklists", "group", "consignee"];
+        $baseRelations = ["photographs", "checklists", "group", "consignee", "videoTutorials.videoTest", "driver"];
         $query = CargoDetail::with($baseRelations)->orderByDesc("id");
 
         // Search functionality
@@ -103,7 +103,10 @@ class CargoDetailController extends Controller
                 ->where("group_id", $user->group_id);
         }
 
-        return response()->json($query->paginate($perPage));
+        $paginated = $query->paginate($perPage);
+        $this->attachVideoTutorialStatuses($paginated->getCollection());
+
+        return response()->json($paginated);
     }
 
     /**
@@ -353,6 +356,10 @@ class CargoDetailController extends Controller
             "video_tutorial_ids.*" => "exists:video_tutorials,id",
         ]);
 
+        if ($fields->fails()) {
+            return response()->json(["error" => $fields->errors()], 422);
+        }
+
         // Generate dispatch ID using the Helper class
         // $dispatchId = Helper::generateDispatchId();
 
@@ -451,43 +458,8 @@ class CargoDetailController extends Controller
             $request->input("cargo_unit_serial_no"),
         )->first();
 
-        if (
-            $request->filled("driver_email") ||
-            $request->filled("driver_mobile_no")
-        ) {
-            $driver = $this->videoWatchService->findOrCreateDriver(
-                $request->input("driver_name"),
-                $request->input("driver_email"),
-                $request->input("driver_mobile_no"),
-            );
-
-            $cargoDetail->update([
-                "driver_id" => $driver?->id,
-                "driver_email" => $request->input("driver_email"),
-                "driver_mobile_no" => $request->input("driver_mobile_no"),
-            ]);
-        }
-
-        if ($request->has("video_tutorial_ids")) {
-            $this->videoWatchService->syncTripVideos(
-                $cargoDetail,
-                $request->input("video_tutorial_ids", []),
-            );
-        }
-
-        $cargoDetail = $cargoDetail->fresh();
-
-        if ($cargoDetail->consignee) {
-            $cargoDetail->consignee()->update([
-                "email" =>
-                    $request->input("consignee_email") ??
-                    $cargoDetail->consignee->email,
-                "phone" =>
-                    $request->input("consignee_phone") ??
-                    $cargoDetail->consignee->phone,
-            ]);
-        }
-
+        // Driver provisioning + video assignment (single pass - this used to
+        // run twice in this method, causing redundant writes)
         if (
             $request->filled("driver_email") ||
             $request->filled("driver_mobile_no")
@@ -516,6 +488,17 @@ class CargoDetailController extends Controller
         }
 
         $cargoDetail = $cargoDetail->fresh();
+
+        if ($cargoDetail->consignee) {
+            $cargoDetail->consignee()->update([
+                "email" =>
+                    $request->input("consignee_email") ??
+                    $cargoDetail->consignee->email,
+                "phone" =>
+                    $request->input("consignee_phone") ??
+                    $cargoDetail->consignee->phone,
+            ]);
+        }
 
         if ($cargoDetail && $cargoDetail->pending_survey == 1) {
             // sending inspection mail
@@ -567,37 +550,87 @@ class CargoDetailController extends Controller
                 ->keyBy('video_tutorial_id')
             : collect();
 
-        $result = $videos->map(function ($video) use ($watchRecords) {
-            $record = $watchRecords->get($video->id);
-            $attempts = $record?->testAttempts ?? collect();
-
-            return [
-                'id' => $video->id,
-                'title' => $video->title,
-                'description' => $video->description,
-                'video_url' => $video->video_url,
-                'status' => $record->status ?? 'not_started', // not_started | in_progress | watched | completed
-                'watched_at' => $record->watched_at ?? null,
-                'selfie_url' => $record->selfie_url ?? null,
-                'is_assisted' => $record->is_assisted ?? false,
-                'assisted_by' => $record?->assistedBy ? [
-                    'id' => $record->assistedBy->id,
-                    'name' => $record->assistedBy->name,
-                ] : null,
-                'test' => $video->videoTest ? [
-                    'pass_percentage' => $video->videoTest->pass_percentage,
-                    'attempts_count' => $attempts->count(),
-                    'best_score_percent' => $attempts->max('score_percent'),
-                    'passed' => $attempts->contains('passed', true),
-                    'last_attempt_at' => $attempts->first()?->submitted_at,
-                ] : null,
-            ];
-        });
+        $result = $videos->map(
+            fn($video) => $this->mapVideoWithWatchStatus($video, $watchRecords->get($video->id)),
+        );
 
         return response()->json([
             'driver_videos_status' => $cargoDetail->driver_videos_status,
             'video_tutorials' => $result,
         ]);
+    }
+
+    /**
+     * Shared per-video status/test shape, used by both the per-trip
+     * checklist (videoTutorials()) and the bulk listing enrichment
+     * (attachVideoTutorialStatuses()) - one place to fix instead of two,
+     * since these had already drifted apart once (one copy read the wrong
+     * "watched_at" column).
+     */
+    private function mapVideoWithWatchStatus($video, ?VideoWatchRecord $record): array
+    {
+        $attempts = $record?->testAttempts ?? collect();
+
+        return [
+            'id' => $video->id,
+            'title' => $video->title,
+            'description' => $video->description,
+            'video_url' => $video->video_url,
+            'status' => $record->status ?? 'not_started', // not_started | in_progress | watched | completed
+            'watched_at' => $record->watched_at ?? null,
+            'selfie_url' => $record->selfie_url ?? null,
+            'is_assisted' => $record->is_assisted ?? false,
+            'assisted_by' => $record?->assistedBy ? [
+                'id' => $record->assistedBy->id,
+                'name' => $record->assistedBy->name,
+            ] : null,
+            'test' => $video->videoTest ? [
+                'pass_percentage' => $video->videoTest->pass_percentage,
+                'attempts_count' => $attempts->count(),
+                'best_score_percent' => $attempts->max('score_percent'),
+                'passed' => $attempts->contains('passed', true),
+                'last_attempt_at' => $attempts->first()?->submitted_at,
+            ] : null,
+        ];
+    }
+
+    /**
+     * Attach an enriched `video_tutorials` array (per-driver watch/test
+     * status) to each CargoDetail in the given collection, for the main
+     * trip listing (index()). Batches the watch-record lookup into a
+     * single query regardless of how many trips are passed in. Requires
+     * `videoTutorials.videoTest` to already be eager-loaded on each model.
+     */
+    private function attachVideoTutorialStatuses($cargoDetails)
+    {
+        $cargoDetails = $cargoDetails instanceof \Illuminate\Support\Collection
+            ? $cargoDetails
+            : collect($cargoDetails);
+
+        $driverIds = $cargoDetails->pluck('driver_id')->filter()->unique();
+        $videoIds = $cargoDetails
+            ->flatMap(fn($c) => $c->videoTutorials->pluck('id'))
+            ->unique();
+
+        $watchRecords = VideoWatchRecord::whereIn('driver_id', $driverIds)
+            ->whereIn('video_tutorial_id', $videoIds)
+            ->with(['assistedBy:id,name', 'testAttempts'])
+            ->get()
+            ->keyBy(fn($r) => $r->driver_id . '-' . $r->video_tutorial_id);
+
+        $cargoDetails->each(function (CargoDetail $cargoDetail) use ($watchRecords) {
+            $videos = $cargoDetail->videoTutorials
+                ->map(fn($video) => $this->mapVideoWithWatchStatus(
+                    $video,
+                    $watchRecords->get($cargoDetail->driver_id . '-' . $video->id),
+                ))
+                ->values();
+
+            $cargoDetail->unsetRelation('videoTutorials'); // drop the raw pivot relation from the JSON
+            $cargoDetail->setAttribute('video_tutorials', $videos); // replace with the enriched version
+        });
+
+        return $cargoDetails;
     }
 
     public function report(CargoDetail $cargoDetail)

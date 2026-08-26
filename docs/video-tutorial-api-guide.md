@@ -108,9 +108,11 @@ Response `200`, same shape as create.
 Not a new endpoint — the existing trip (`CargoDetail`) create/update endpoints accept a `video_tutorial_ids` array:
 
 - `POST /cargo-details` and `POST/PUT /cargo-details/{id}`
-- Body: `"video_tutorial_ids": [12, 14]` (each ID validated against `video_tutorials`)
-- This is what makes a video "pending" for the trip's driver, and is what the dispatcher checklist (§5) and driver's pending list (§4) key off of.
+- Body: `"video_tutorial_ids": [12, 14]` (each ID validated against `video_tutorials` — including on update, where this validation previously existed but was never actually enforced due to a missing check; it's enforced now)
+- This is what makes a video "pending" for the trip's driver, and is what the dispatcher checklist (§6) and driver's pending list (§4) key off of.
 - A driver with no account yet is auto-provisioned from `driver_name` / `driver_email` / `driver_mobile_no` on the same request (existing behavior, unchanged).
+
+**The main trip listing also carries this data now**: `GET /cargo-details` (the paginated `index()` used everywhere else in the app) includes a `video_tutorials` array on every trip in the response, in the **exact same shape** as the per-trip checklist in §6 (same `status`, `test` block, etc. — both are built from one shared mapping function, so they can't drift apart again). If your trip-list screen wants to show a quick training-status indicator per row, this is already there — no extra request needed.
 
 ---
 
