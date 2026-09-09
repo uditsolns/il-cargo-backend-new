@@ -6,6 +6,8 @@ use App\Models\ApiUsageLog;
 use App\Models\CargoDetail;
 use App\Models\Group;
 use App\Models\User;
+use App\Services\APIClub;
+use App\Support\DashboardPeriod;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -16,18 +18,15 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $request->validate([
+            'period' => 'nullable|in:last_7_days,month,quarter,year,custom',
+            'year' => 'required_if:period,month,quarter,year|digits:4',
+            'month' => 'required_if:period,month|integer|between:1,12',
+            'quarter' => 'required_if:period,quarter|integer|between:1,4',
             'from_date' => 'nullable|date',
             'to_date' => 'nullable|date|after_or_equal:from_date',
         ]);
 
-        // Default to last 30 days
-        $fromDate = $request->from_date
-            ? Carbon::parse($request->from_date)->startOfDay()
-            : Carbon::now()->subDays(30)->startOfDay();
-
-        $toDate = $request->to_date
-            ? Carbon::parse($request->to_date)->endOfDay()
-            : Carbon::now()->endOfDay();
+        [$fromDate, $toDate] = DashboardPeriod::resolve($request);
 
         // Apply date filter to base queries
         $dateFilter = function ($query) use ($fromDate, $toDate) {
@@ -37,7 +36,10 @@ class DashboardController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
+                // Pure totals - deliberately NOT period-filtered, unlike
+                // everything else below. See getCounts()'s own docblock.
                 'counts' => $this->getCounts(),
+                'api_usage_by_type' => $this->getApiUsageByType($fromDate, $toDate),
                 'graphs' => $this->getGraphData($fromDate, $toDate),
                 'inspection_summary' => $this->getInspectionSummary($dateFilter),
             ],
@@ -48,6 +50,11 @@ class DashboardController extends Controller
         ]);
     }
 
+    /**
+     * Deliberately unfiltered - these describe the whole customer base,
+     * not activity in a period. Never wire the dashboard's period filter
+     * into this method.
+     */
     private function getCounts()
     {
         // Count customers (groups)
@@ -70,6 +77,26 @@ class DashboardController extends Controller
         ];
     }
 
+    /**
+     * RC/DL/Aadhaar API-call counts, period-filtered (unlike getCounts()'s
+     * totals - this is inherently activity-over-time data). Aadhaar has two
+     * endpoints (send/submit OTP), both counted as one bucket.
+     */
+    private function getApiUsageByType(Carbon $fromDate, Carbon $toDate): array
+    {
+        $counts = ApiUsageLog::whereBetween('requested_at', [$fromDate, $toDate])
+            ->selectRaw('endpoint, COUNT(*) as total')
+            ->groupBy('endpoint')
+            ->pluck('total', 'endpoint');
+
+        return [
+            'rc' => (int) $counts->get(APIClub::RC, 0),
+            'dl' => (int) $counts->get(APIClub::DL, 0),
+            'aadhaar' => (int) $counts->get(APIClub::SEND_OTP, 0)
+                + (int) $counts->get(APIClub::SUBMIT_OTP, 0),
+        ];
+    }
+
     private function getGraphData($fromDate, $toDate)
     {
         // Create date range
@@ -84,7 +111,7 @@ class DashboardController extends Controller
             DB::raw('DATE(created_at) as date'),
             DB::raw('COUNT(*) as count')
         )
-            // ->whereBetween('created_at', [$fromDate, $toDate])
+            ->whereBetween('created_at', [$fromDate, $toDate])
             ->groupBy('date')
             ->orderBy('date')
             ->get()
@@ -96,7 +123,7 @@ class DashboardController extends Controller
             DB::raw('DATE(created_at) as date'),
             DB::raw('COUNT(*) as count')
         )
-            // ->whereBetween('created_at', [$fromDate, $toDate])
+            ->whereBetween('created_at', [$fromDate, $toDate])
             ->groupBy('date')
             ->orderBy('date')
             ->get()
