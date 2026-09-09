@@ -53,6 +53,8 @@ class GroupController extends Controller
             'city' => 'required',
             'gst' => 'required',
             'sop' => 'nullable|file|mimes:pdf|max:10240',
+            'policy_no' => 'nullable|string',
+            'policy_expiry_date' => 'nullable|date',
             // Add validation for other fields
         ]);
 
@@ -86,6 +88,8 @@ class GroupController extends Controller
             'photo' => $photoFileName ?? null,
             'sop' => $sopFileName ?? null,
             'additional_emails' => $additionalEmails,
+            'policy_no' => $request->input('policy_no'),
+            'policy_expiry_date' => $request->input('policy_expiry_date'),
             // 'channel_partner_id' => isset($channel_partner_id) ? $channel_partner_id : null,
         ]);
         // if ($request->emails) {
@@ -170,6 +174,8 @@ class GroupController extends Controller
             'additional_emails' => $additionalEmails,
             'photo' => $photoFileName ?? $group->photo,
             'sop' => $sopFileName ?? $group->sop,
+            'policy_no' => $request->input('policy_no', $group->policy_no),
+            'policy_expiry_date' => $request->input('policy_expiry_date', $group->policy_expiry_date),
         ];
 
         // Update the group with the new data
