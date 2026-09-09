@@ -59,6 +59,11 @@ class VideoWatchService
      *   null      -> no videos assigned
      *   pending   -> videos assigned, not all completed yet (or no driver yet)
      *   completed -> driver has completed every assigned video
+     *
+     * Also recomputes that trip's driver's OWN aggregate video_status
+     * (across all of their trips, not just this one) - this is the single
+     * choke point every call site that can affect either value already
+     * goes through, so it's the one place both stay in sync from.
      */
     public function recalculateStatus(CargoDetail $cargo): void
     {
@@ -82,6 +87,36 @@ class VideoWatchService
         }
 
         $cargo->update(["driver_videos_status" => $status]);
+
+        if ($cargo->driver_id) {
+            $this->recalculateDriverVideoStatus($cargo->driver_id);
+        }
+    }
+
+    /**
+     * Same null/pending/completed rollup as recalculateStatus(), but
+     * across ALL of a driver's trips rather than one - this is what
+     * GET /drivers?video_status= filters on. Denormalized onto
+     * users.video_status (rather than computed per-request) since it's
+     * filtered/paginated on far more often than it actually changes.
+     */
+    public function recalculateDriverVideoStatus(int $driverId): void
+    {
+        $videoIds = $this->applicableVideoIdsForDriver($driverId);
+
+        if ($videoIds->isEmpty()) {
+            $status = null;
+        } else {
+            $completedCount = VideoWatchRecord::where("driver_id", $driverId)
+                ->whereIn("video_tutorial_id", $videoIds)
+                ->where("status", "completed")
+                ->count();
+
+            $status =
+                $completedCount >= $videoIds->count() ? "completed" : "pending";
+        }
+
+        User::where("id", $driverId)->update(["video_status" => $status]);
     }
 
     /**
@@ -114,7 +149,7 @@ class VideoWatchService
      */
     public function pendingVideoTutorialsForDriver(User $driver)
     {
-        $videoIds = $this->applicableVideoIdsForDriver($driver);
+        $videoIds = $this->applicableVideoIdsForDriver($driver->id);
 
         $records = VideoWatchRecord::where("driver_id", $driver->id)
             ->whereIn("video_tutorial_id", $videoIds)
@@ -140,12 +175,12 @@ class VideoWatchService
             ->values();
     }
 
-    private function applicableVideoIdsForDriver(User $driver)
+    private function applicableVideoIdsForDriver(int $driverId)
     {
         return DB::table("cargo_detail_video")
             ->whereIn(
                 "cargo_detail_id",
-                CargoDetail::where("driver_id", $driver->id)->pluck("id"),
+                CargoDetail::where("driver_id", $driverId)->pluck("id"),
             )
             ->pluck("video_tutorial_id")
             ->unique();

@@ -27,6 +27,7 @@ class User extends Authenticatable
         "phone",
         "channel_partner_id",
         "user_status",
+        "video_status",
     ];
 
     /**

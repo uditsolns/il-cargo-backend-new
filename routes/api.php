@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CargoDetailController;
+use App\Http\Controllers\DriverController;
 use App\Http\Controllers\VerificationController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\VideoWatchRecordController;
@@ -113,6 +114,13 @@ Route::prefix("/v1")->group(function () {
                 Route::get("test", "showTest");
                 Route::post("test", "submitTest");
             });
+
+        Route::get('drivers', [DriverController::class, 'index']);
+        Route::get('drivers/{driver}/pending-videos', [DriverController::class, 'pendingVideos']);
+        Route::post('drivers/{driver}/assisted-videos/{videoTutorial}/selfie', [DriverController::class, 'assistedSelfie']);
+        Route::post('drivers/{driver}/assisted-videos/{videoTutorial}/complete', [DriverController::class, 'assistedComplete']);
+        Route::get('drivers/{driver}/assisted-videos/{videoTutorial}/test', [DriverController::class, 'assistedShowTest']);
+        Route::post('drivers/{driver}/assisted-videos/{videoTutorial}/test', [DriverController::class, 'assistedSubmitTest']);
 
         Route::get('video-watch-records', [VideoWatchRecordController::class, 'index']);
         Route::get('drivers/{user}/video-watch-records', [VideoWatchRecordController::class, 'forDriver']);
