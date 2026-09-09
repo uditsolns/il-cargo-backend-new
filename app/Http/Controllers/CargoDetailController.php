@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Helpers\Helper;
+use App\Http\Requests\StoreCargoDetailRequest;
 use App\Mail\InspectionReportMail;
 use App\Models\CargoDetail;
 use App\Models\PhaseZone;
@@ -47,7 +48,7 @@ class CargoDetailController extends Controller
         $onlyPending = $request->input("only_pending", false);
         $user = Auth::user();
 
-        $baseRelations = ["photographs", "checklists", "group", "consignee", "videoTutorials.videoTest", "driver"];
+        $baseRelations = ["photographs", "checklists", "group", "consignee", "videoTutorials.videoTest", "driver", "creator"];
         $query = CargoDetail::with($baseRelations)->orderByDesc("id");
 
         // Search functionality
@@ -65,43 +66,27 @@ class CargoDetailController extends Controller
             });
         }
 
-        // Admin: see everything
-        if ($user->is_admin == 1) {
+        // Extra eager-loads historically varied by role; preserved as-is
+        // here, decoupled from the visibility filtering below (which is
+        // now the single scopeVisibleTo() rule shared with show()).
+        if ($user->is_admin == 1 || $user->role == "Ground Surveyor") {
             $query->with(["photographs.zone", "photographs.phase"]);
-        }
-        // Channel partner status user
-        elseif ($user->user_status == 1) {
-            $query->where("channel_partner_id", $user->channel_partner_id);
-        }
-        // Role-based filtering
-        elseif (
-            in_array($user->role, [
+        } elseif (
+            !in_array($user->role, [
                 "Insured's Dispatch Supervisor",
                 "Insured's Representative",
-            ])
+                "Channel Partner",
+            ]) &&
+            $user->user_status != 1
         ) {
-            $query->where("group_id", $user->group_id);
-        } elseif ($user->role == "Channel Partner") {
-            $query->where("channel_partner_id", $user->id);
-        } elseif ($user->role == "Consignee") {
-            $query
-                ->with([
-                    "group.phases",
-                    "photographs.zone",
-                    "photographs.phase",
-                ])
-                ->where("consignee_id", $user->id);
+            $query->with([
+                "group.phases",
+                "photographs.zone",
+                "photographs.phase",
+            ]);
         }
-        // Regular users
-        else {
-            $query
-                ->with([
-                    "group.phases",
-                    "photographs.zone",
-                    "photographs.phase",
-                ])
-                ->where("group_id", $user->group_id);
-        }
+
+        $query->visibleTo($user);
 
         $paginated = $query->paginate($perPage);
         $this->attachVideoTutorialStatuses($paginated->getCollection());
@@ -125,7 +110,7 @@ class CargoDetailController extends Controller
      * @param \Illuminate\Http\Request $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreCargoDetailRequest $request)
     {
         $user = Auth::user();
         if ($user->role == "Channel Partner") {
@@ -138,19 +123,6 @@ class CargoDetailController extends Controller
         } else {
             $userId = $user->id;
             $groupId = $request->group_id;
-        }
-
-        // NEW — validate the driver / video inputs before doing any writes
-        $fields = Validator::make($request->all(), [
-            "driver_name" => "nullable|string",
-            "driver_email" => "nullable|email",
-            "driver_mobile_no" => "nullable|string",
-            "video_tutorial_ids" => "nullable|array",
-            "video_tutorial_ids.*" => "exists:video_tutorials,id",
-        ]);
-
-        if ($fields->fails()) {
-            return response()->json(["error" => $fields->errors()], 422);
         }
 
         $dispatchId = Helper::generateDispatchId();
@@ -226,60 +198,59 @@ class CargoDetailController extends Controller
             $request->input("driver_mobile_no"),
         );
 
-        $cargoDetail = CargoDetail::UpdateOrCreate(
-            ["cargo_unit_serial_no" => $request->input("cargo_unit_serial_no")],
-            [
-                "veh_reg_no" => $request->input("veh_reg_no"),
-                "invoice" => $invoiceFileName,
-                "driver_lic_no" => $licenseFileName,
-                "packing_list" => $packingListFileName,
-                "veh_fitness_cert" => $vehicleFitnessFileName,
-                "serial_no" => $request->input("serial_no"),
-                "invoice_value" => $request->input("invoice_value"),
-                "dispatch_lat" => $request->input("dispatch_lat"),
-                "dispatch_long" => $request->input("dispatch_long"),
-                "destination_long" => $request->input("destination_long"),
-                "destination_lat" => $request->input("destination_lat"),
-                "value_add" => $request->input("value_add"),
-                "date_transit" => $request->input("date_transit"),
-                "veh_carrying_capacity" => $request->input(
-                    "veh_carrying_capacity",
-                ),
-                "pending_servey" => $request->input("pending_servey"),
-                "address" => $request->input("address"),
-                "dispatch_type" => $request->input("dispatch_type"),
-                "flat_track_number" => $request->input("flat_track_number"),
-                "destination_pin" => $request->input("destination_pin"),
-                "origin_pin" => $request->input("origin_pin"),
-                "group_id" => $groupId ?? null,
-                "destination_address" => $request->input("destination_address"),
-                "dispatch_id" => $dispatchId,
-                "user_id" => $userId,
-                "channel_partner_id" => isset($channel_partner_id)
-                    ? $channel_partner_id
-                    : null,
-                "consignee_id" => $consignee_id,
-                "remarks" => $request->input("remarks") ?? null,
-                "dl_no" => $request->input("dl_no"),
-                "dl_dob" => $request->input("dl_dob"),
-                "driver_aadhaar_no" => $request->input("driver_aadhaar_no"),
-                "is_rc_verified" => $request->input("is_rc_verified"),
-                "is_dl_verified" => $request->input("is_dl_verified"),
-                "is_aadhaar_verified" => $request->input("is_aadhaar_verified"),
-                "is_verification_done" => $request->input(
-                    "is_verification_done",
-                ),
-                // NEW
-                "driver_id" => $driver?->id,
-                "driver_email" => $request->input("driver_email"),
-                "driver_mobile_no" => $request->input("driver_mobile_no"),
-            ],
-        );
-
-        $cargoDetail = CargoDetail::where(
-            "cargo_unit_serial_no",
-            $request->input("cargo_unit_serial_no"),
-        )->first();
+        $cargoDetail = CargoDetail::create([
+            "cargo_unit_serial_no" => $request->input("cargo_unit_serial_no"),
+            "veh_reg_no" => $request->input("veh_reg_no"),
+            "invoice" => $invoiceFileName,
+            "driver_lic_no" => $licenseFileName,
+            "packing_list" => $packingListFileName,
+            "veh_fitness_cert" => $vehicleFitnessFileName,
+            "serial_no" => $request->input("serial_no"),
+            "invoice_value" => $request->input("invoice_value"),
+            "dispatch_lat" => $request->input("dispatch_lat"),
+            "dispatch_long" => $request->input("dispatch_long"),
+            "destination_long" => $request->input("destination_long"),
+            "destination_lat" => $request->input("destination_lat"),
+            "value_add" => $request->input("value_add"),
+            "date_transit" => $request->input("date_transit"),
+            "estimated_date_of_arrival" => $request->input("estimated_date_of_arrival"),
+            "veh_carrying_capacity" => $request->input(
+                "veh_carrying_capacity",
+            ),
+            "pending_servey" => $request->input("pending_servey"),
+            "address" => $request->input("address"),
+            "dispatch_type" => $request->input("dispatch_type"),
+            "flat_track_number" => $request->input("flat_track_number"),
+            "destination_pin" => $request->input("destination_pin"),
+            "origin_pin" => $request->input("origin_pin"),
+            "group_id" => $groupId ?? null,
+            "destination_address" => $request->input("destination_address"),
+            "dispatch_id" => $dispatchId,
+            "user_id" => $userId,
+            "channel_partner_id" => isset($channel_partner_id)
+                ? $channel_partner_id
+                : null,
+            "consignee_id" => $consignee_id,
+            "remarks" => $request->input("remarks") ?? null,
+            "dl_no" => $request->input("dl_no"),
+            "dl_dob" => $request->input("dl_dob"),
+            "driver_aadhaar_no" => $request->input("driver_aadhaar_no"),
+            // NOT NULL columns with a migration default of false; the
+            // default only applies when the column is omitted entirely,
+            // not when NULL is explicitly inserted - ->input() returns
+            // null for an absent field, ->boolean() correctly defaults
+            // to false instead.
+            "is_rc_verified" => $request->boolean("is_rc_verified"),
+            "is_dl_verified" => $request->boolean("is_dl_verified"),
+            "is_aadhaar_verified" => $request->boolean("is_aadhaar_verified"),
+            "is_verification_done" => $request->boolean(
+                "is_verification_done",
+            ),
+            // NEW
+            "driver_id" => $driver?->id,
+            "driver_email" => $request->input("driver_email"),
+            "driver_mobile_no" => $request->input("driver_mobile_no"),
+        ]);
 
         // NEW — assign applicable tutorial videos to this trip, then compute driver_videos_status
         if ($request->has("video_tutorial_ids")) {
@@ -307,7 +278,14 @@ class CargoDetailController extends Controller
             "group.phases",
             "photographs.zone",
             "photographs.phase",
-        )->findOrFail($id);
+            "driver",
+            "creator",
+            "videoTutorials.videoTest",
+        )
+            ->visibleTo(Auth::user())
+            ->findOrFail($id);
+
+        $this->attachVideoTutorialStatuses(collect([$cargoDetail]));
 
         return response()->json(["cargo_details" => $cargoDetail]);
     }

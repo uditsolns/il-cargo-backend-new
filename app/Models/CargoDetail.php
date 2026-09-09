@@ -29,6 +29,7 @@ class CargoDetail extends Model
         "destination_lat",
         "value_add",
         "date_transit",
+        "estimated_date_of_arrival",
         "pending_servey",
         "created_at",
         "updated_at",
@@ -89,6 +90,11 @@ class CargoDetail extends Model
         return $this->belongsTo(User::class, "driver_id");
     }
 
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, "user_id");
+    }
+
     public function videoTutorials()
     {
         return $this->belongsToMany(
@@ -105,7 +111,7 @@ class CargoDetail extends Model
      */
     public function scopeVisibleTo($query, User $user)
     {
-        if ($user->is_admin == 1) {
+        if ($user->is_admin == 1 || $user->role == "Ground Surveyor") {
             return $query;
         }
 
