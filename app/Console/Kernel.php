@@ -5,6 +5,7 @@ namespace App\Console;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 use App\Jobs\CargoCompleted;
+use App\Jobs\FetchUlipDataForActiveDispatches;
 
 class Kernel extends ConsoleKernel
 {
@@ -17,6 +18,7 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         $schedule->job(new CargoCompleted)->everyMinute();
+        $schedule->job(new FetchUlipDataForActiveDispatches)->everySixHours();
     }
 
     /**

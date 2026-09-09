@@ -32,6 +32,15 @@ return [
 
     'google_maps' => [
         'key' => env('GOOGLE_MAPS_API_KEY'),
-    ]
+    ],
+
+    // The sibling ulip-apis proxy this project calls for container/FASTag
+    // data (see docs/adr/0003-ulip-container-fastag-polling.md). NOT the
+    // government ULIP endpoint - that's the separate, unrelated
+    // ULIP_BASE_URL/ULIP_AUTH_TOKEN pair left over from before this proxy
+    // existed.
+    'ulip_proxy' => [
+        'base_url' => env('ULIP_PROXY_BASE_URL'),
+    ],
 
 ];
