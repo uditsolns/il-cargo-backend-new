@@ -1,8 +1,30 @@
-# Video Tutorial & Driver Training
+# IL Cargo
 
-Tracks tutorial videos assigned to trips, drivers' progress watching them, and the MCQ comprehension tests that gate that progress.
+Tracks cargo dispatches (trips) end-to-end: who they belong to, the drivers assigned to them, and the tutorial videos/tests that gate driver readiness.
 
 ## Language
+
+### Customers, Groups & Policies
+
+**Customer** (business term, as used by the client/stakeholders):
+The insured company a dispatch is done on behalf of. In code this is the `Group` model (name, address, GST, `channel_partner_id`) — the entity `cargo_details.group_id` belongs to and the entity all existing visibility rules scope access by.
+_Avoid_: The `Customer` Eloquent model/table — despite the name, it is unrelated to dispatches (no relationship to `CargoDetail` at all) and is only used for SOPs. Do not add policy/insurance fields there; it is not what stakeholders mean by "customer."
+
+**Container number**:
+The shipping container's identifier, in ISO-6346-style format (e.g. `HLBU8163708`). Stored in `cargo_details.cargo_unit_serial_no` — the field name is legacy/misleading, but this is what it holds for container-type dispatches. Required and format-validated on dispatch creation, and globally unique across all dispatches (creation is rejected on a duplicate — not the pre-existing silent-upsert behavior).
+_Avoid_: "Cargo unit serial no" as user-facing language when the dispatch is a container shipment.
+
+**Policy**:
+A Group's insurance policy, identified by `policy_no` with a `policy_expiry_date`. A null expiry means no policy is on file yet and does not block anything; a dispatch can only be blocked from creation when the Group's policy has an explicit expiry date that has already passed.
+_Avoid_: Treating "no policy on file" the same as "expired" — they are different states with different outcomes.
+
+### Support
+
+**Support ticket**:
+A query or complaint raised by a user, tracked as subject/description/status through to resolution. Belongs to the raising user's Group, the same way a Trip does.
+_Avoid_: "Query" as a separate concept from "ticket" — the client's phrasing ("Query & ticket ID") names one thing, not two: the ticket record itself, referenced by its ticket ID.
+
+### Video Tutorial & Driver Training
 
 **Trip**:
 A `CargoDetail` record — one dispatch/consignment, with its own vehicle, driver, and route.
