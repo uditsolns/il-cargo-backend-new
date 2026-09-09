@@ -1,10 +1,5 @@
 <?php
 
-use App\Models\CargoDetail;
-use App\Services\GoogleMapsStaticService;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
-
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -16,9 +11,20 @@ use Illuminate\Support\Facades\Mail;
 |
 */
 
-/**
- * Process location data for map visualization
- */
+/*
+ * Everything below was ad-hoc debugging scaffolding (per project owner,
+ * 2026-09-09) - not production routes. Commented out for the duration of
+ * the TDD work on the new client requirements, since the top-level
+ * function declarations here broke running more than one PHPUnit test
+ * per process (Laravel's test bootstrap re-requires this file before
+ * every test, and a plain `function foo(){}` isn't idempotent under
+ * repeated `require` the way autoloaded classes are).
+
+use App\Models\CargoDetail;
+use App\Services\GoogleMapsStaticService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
+
 function processLocationData($photographs)
 {
     if (empty($photographs)) {
@@ -222,3 +228,4 @@ Route::get("/google-map", function (Request $request) {
 //            'user' => $user,
 //        ]);
 //});
+*/
