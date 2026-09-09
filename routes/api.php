@@ -120,6 +120,9 @@ Route::prefix("/v1")->group(function () {
         Route::get('video-tutorials/{videoTutorial}/test-attempts', [VideoWatchRecordController::class, 'forVideoTests']);
         Route::get('cargo-details/{cargoDetail}/video-tutorials', [CargoDetailController::class, 'videoTutorials']);
 
+        Route::get('support-tickets/pending-count', 'SupportTicketController@pendingCount');
+        Route::apiResource('support-tickets', 'SupportTicketController');
+
 
         Route::post("logout", "AuthController@logout");
         Route::post("commands", function (Request $request) {
