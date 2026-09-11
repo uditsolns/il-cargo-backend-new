@@ -280,6 +280,7 @@ class CargoDetailController extends Controller
             "photographs.phase",
             "driver",
             "creator",
+            "consignee",
             "videoTutorials.videoTest",
         )
             ->visibleTo(Auth::user())
