@@ -355,6 +355,54 @@ class GoogleMapsStaticService
     }
 
     /**
+     * Origin -> destination map for the final dispatch report: a straight
+     * connecting line plus two distinctly labeled/colored markers. This is
+     * a straight line between the two raw coordinates (Static Maps API's
+     * own `path` parameter), not a road-following route - deliberate: it
+     * needs no Directions/Routes API call, and for "instantly legible: this
+     * cargo went from A to B" a straight line reads at least as clearly as
+     * a road-accurate polyline, without the extra dependency/API call.
+     */
+    public function generateOriginDestinationMap(array $origin, array $destination, array $options = []): string
+    {
+        $origin = $this->normalizeLocation($origin);
+        $destination = $this->normalizeLocation($destination);
+
+        $defaultOptions = [
+            'size' => '800x400',
+            'maptype' => 'roadmap',
+            'format' => 'png',
+            'scale' => 2,
+        ];
+        $options = array_merge($defaultOptions, $options);
+
+        $bestFit = $this->calculateBestFit([$origin, $destination]);
+
+        $params = [
+            'size' => $options['size'],
+            'maptype' => $options['maptype'],
+            'format' => $options['format'],
+            'scale' => $options['scale'],
+            'center' => $this->formatLatLng($bestFit['center']),
+            'zoom' => $options['zoom'] ?? $bestFit['zoom'],
+            'key' => $this->apiKey,
+        ];
+
+        $originLatLng = $this->formatLatLng($origin);
+        $destinationLatLng = $this->formatLatLng($destination);
+
+        $urlParts = [];
+        foreach ($params as $key => $value) {
+            $urlParts[] = $key . '=' . urlencode($value);
+        }
+        $urlParts[] = 'markers=' . urlencode("color:green|label:O|{$originLatLng}");
+        $urlParts[] = 'markers=' . urlencode("color:red|label:D|{$destinationLatLng}");
+        $urlParts[] = 'path=' . urlencode("color:0x0000ffcc|weight:4|{$originLatLng}|{$destinationLatLng}");
+
+        return $this->baseUrl . '?' . implode('&', $urlParts);
+    }
+
+    /**
      * Debug method - add this temporarily to see what URL is being generated
      */
     public function debugInspectionRouteMap(array $locationData): array

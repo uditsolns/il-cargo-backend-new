@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CargoDetail extends Model
@@ -58,6 +59,11 @@ class CargoDetail extends Model
         "driver_email",
         "driver_mobile_no",
         "driver_videos_status",
+        "final_report_sent_at",
+    ];
+
+    protected $casts = [
+        "final_report_sent_at" => "datetime",
     ];
 
     public function group()
@@ -101,6 +107,16 @@ class CargoDetail extends Model
             VideoTutorial::class,
             "cargo_detail_video",
         )->withTimestamps();
+    }
+
+    public function fastagTransactions(): HasMany
+    {
+        return $this->hasMany(FastagTransaction::class)->latest("fetched_at");
+    }
+
+    public function containerTrackingEvents(): HasMany
+    {
+        return $this->hasMany(ContainerTrackingEvent::class)->latest("fetched_at");
     }
 
     /**

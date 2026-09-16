@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Helpers\Helper;
 use App\Http\Requests\StoreCargoDetailRequest;
+use App\Mail\FinalReportMail;
 use App\Mail\InspectionReportMail;
 use App\Models\CargoDetail;
 use App\Models\PhaseZone;
@@ -609,6 +610,25 @@ class CargoDetailController extends Controller
         $pdf = (new InspectionReportMail($cargoDetail))->generatePdfReport();
 
         return $pdf->stream("{$cargoDetail->cargo_unit_serial_no}-report.pdf");
+    }
+
+    /**
+     * The final report (shipment route map, FASTag/container tracking data,
+     * on top of everything report() already has) - the same PDF
+     * FinalReportMail emails automatically once a trip is marked
+     * completed. Unlike report(), this is authorized the same way
+     * show()/index() are, since it surfaces the same sensitive data.
+     */
+    public function finalReport(CargoDetail $cargoDetail)
+    {
+        abort_unless(
+            CargoDetail::visibleTo(Auth::user())->whereKey($cargoDetail->id)->exists(),
+            404,
+        );
+
+        $pdf = (new FinalReportMail($cargoDetail))->generatePdfReport();
+
+        return $pdf->stream("{$cargoDetail->cargo_unit_serial_no}-final-report.pdf");
     }
 
     public function export(Request $request)

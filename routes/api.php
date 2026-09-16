@@ -127,6 +127,7 @@ Route::prefix("/v1")->group(function () {
         Route::get('video-tutorials/{videoTutorial}/watch-records', [VideoWatchRecordController::class, 'forVideo']);
         Route::get('video-tutorials/{videoTutorial}/test-attempts', [VideoWatchRecordController::class, 'forVideoTests']);
         Route::get('cargo-details/{cargoDetail}/video-tutorials', [CargoDetailController::class, 'videoTutorials']);
+        Route::get('cargo-details/{cargoDetail}/final-report', [CargoDetailController::class, 'finalReport']);
 
         Route::get('support-tickets/pending-count', 'SupportTicketController@pendingCount');
         Route::apiResource('support-tickets', 'SupportTicketController');
