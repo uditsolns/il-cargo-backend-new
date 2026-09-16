@@ -61,7 +61,7 @@
                                     'Dispatch ID' => $cargo->dispatch_id,
                                     'Vehicle Registration' => $cargo->veh_reg_no,
                                     'Cargo Serial' => $cargo->cargo_unit_serial_no,
-                                    'Invoice Value' => '₹'.number_format($cargo->invoice_value),
+                                    'Invoice Value' => '₹'.number_format(floatval($cargo->invoice_value)),
                                     'Inspection Date' => \Carbon\Carbon::parse($cargo->updated_at)->format('d/m/Y, h:i A'),
                                     'Destination' => $cargo->address . " (PIN: " . $cargo->destination_pin . ")"
                                 ];
