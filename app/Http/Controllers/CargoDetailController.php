@@ -12,7 +12,6 @@ use App\Services\VideoWatchService;
 use App\Models\VideoWatchRecord;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
 class CargoDetailController extends Controller
@@ -477,13 +476,6 @@ class CargoDetailController extends Controller
                     $request->input("consignee_phone") ??
                     $cargoDetail->consignee->phone,
             ]);
-        }
-
-        if ($cargoDetail && $cargoDetail->pending_survey == 1) {
-            // sending inspection mail
-            Mail::to("udit9solutions@gmail.com")->send(
-                new InspectionReportMail($cargoDetail),
-            );
         }
 
         return response()->json(["cargo_detail" => $cargoDetail], 201);
