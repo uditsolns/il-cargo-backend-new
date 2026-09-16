@@ -2,70 +2,57 @@
 
 namespace App\Jobs;
 
+use App\Mail\FinalReportMail;
+use App\Models\CargoDetail;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use App\Models\CargoDetail;
-use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use App\Mail\PendingSurveyMail;
-use App\Models\Email;
-use App\Models\Group;
 
+/**
+ * Sends the final report (see FinalReportMail) exactly once per dispatch,
+ * when pending_servey flips to 1 (trip completed). final_report_sent_at
+ * gates the resend - this job itself is scheduled every minute
+ * (Console\Kernel::schedule()), and previously had no such guard, so it
+ * would otherwise re-email the same dispatch on every run for as long as
+ * pending_servey stayed at 1. Also previously only looked at the single
+ * *latest* matching dispatch (->latest()->first()); now processes every
+ * one that hasn't been notified yet.
+ */
 class CargoCompleted implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * Create a new job instance.
-     *
-     * @return void
-     */
-    public function __construct()
-    {
-        //
-    }
-
-    /**
-     * Execute the job.
-     *
-     * @return void
-     */
     public function handle()
-{
-    // Retrieve the latest cargo detail with pending_survey equal to 1
-$cargoDetail = CargoDetail::where('pending_servey', 1)
-->latest() // Order by the created_at column in descending order
-->first(); // Retrieve only the latest cargo detail
+    {
+        $completedDispatches = CargoDetail::where('pending_servey', 1)
+            ->whereNull('final_report_sent_at')
+            ->with('group')
+            ->get();
 
-if ($cargoDetail) {
-$userId = $cargoDetail->user_id;
-$user = User::find($userId);
-$groupId = $user->group_id;
+        if ($completedDispatches->isEmpty()) {
+            Log::info('CargoCompleted: no newly-completed dispatches to email.');
+            return;
+        }
 
-// Get emails associated with the group
-$emails = Group::where('id', $groupId)->pluck('additional_emails')->first();
-$emails = json_decode($emails, true); // Decode JSON as associative array
-if ($emails) {
-    // Send email to each recipient
-    foreach ($emails as $email) {
-        Log::info("emails data : " . print_r($email, true)); 
-        Mail::to($email)->send(new PendingSurveyMail($user));
-        Log::info("Mail sent to email: $email");
+        foreach ($completedDispatches as $cargoDetail) {
+            $emails = $cargoDetail->group?->additional_emails ?? [];
+
+            if (empty($emails)) {
+                Log::info("CargoCompleted: no additional_emails configured for group {$cargoDetail->group_id}, dispatch {$cargoDetail->dispatch_id} - marking processed without sending.");
+                $cargoDetail->update(['final_report_sent_at' => now()]);
+                continue;
+            }
+
+            foreach ($emails as $email) {
+                Mail::to($email)->send(new FinalReportMail($cargoDetail));
+                Log::info("CargoCompleted: final report sent to {$email} for dispatch {$cargoDetail->dispatch_id}.");
+            }
+
+            $cargoDetail->update(['final_report_sent_at' => now()]);
+        }
     }
-    
-    Log::info("Mails sent to all recipients in the group");
-} else {
-    Log::info("No additional emails found for the group");
-}
-} else {
-Log::info("No cargo details found with pending survey equal to 1");
-}
-
-}
-
 }
