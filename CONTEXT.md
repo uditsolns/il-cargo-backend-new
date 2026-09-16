@@ -24,6 +24,19 @@ _Avoid_: Treating "no policy on file" the same as "expired" — they are differe
 A query or complaint raised by a user, tracked as subject/description/status through to resolution. Belongs to the raising user's Group, the same way a Trip does.
 _Avoid_: "Query" as a separate concept from "ticket" — the client's phrasing ("Query & ticket ID") names one thing, not two: the ticket record itself, referenced by its ticket ID.
 
+### Reporting
+
+**Trip completion**:
+A Trip is "completed" when `cargo_details.pending_servey == 1`. The column's own name and the (now-removed) reminder email it used to trigger both read as the opposite ("a survey is still pending") — resolved by client confirmation to mean completion, matching the job's actual name (`CargoCompleted`). Do not rename the column; it's used this way everywhere in the app already.
+_Avoid_: Assuming "pending" in `pending_servey` means "not yet done" — that reading is wrong for this codebase.
+
+**Inspection report**:
+The on-demand PDF (`GET /cargo-details/{id}/report`, `InspectionReportMail`) — dispatch details, customer details, SOP checklist results, and a photo-GPS location map. Available any time, not tied to trip completion.
+_Avoid_: Confusing this with the Final report below — they're separate PDFs from separate Mailables, sharing only the compliance-summary/location-map logic (`App\Mail\Concerns\BuildsInspectionReportData`).
+
+**Final report**:
+The completion PDF (`GET /cargo-details/{id}/final-report`, `FinalReportMail`) — everything the Inspection report has, plus a shipment route map (origin→destination) and FASTag/container tracking data. Emailed automatically, exactly once per trip, when the trip is marked completed (see `CargoCompleted` and `cargo_details.final_report_sent_at`).
+
 ### Video Tutorial & Driver Training
 
 **Trip**:

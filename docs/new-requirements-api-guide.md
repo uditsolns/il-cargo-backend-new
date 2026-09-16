@@ -556,7 +556,17 @@ Body: `{"answers": {"<question_id>": <option_id>, ...}}` — one entry per quest
 
 ---
 
-## 8. Error shape reference
+## 8. Final report
+
+`GET /cargo-details/{id}/final-report` — everything the existing on-demand report (`GET /cargo-details/{id}/report`) has, plus a shipment route map (origin→destination, straight connecting line) and any FASTag/container tracking data collected for the dispatch. Same access control as `GET /cargo-details/{id}` (§5) — `404` if not in your group — unlike the older `/report` endpoint, which currently has none.
+
+Response is a raw PDF stream (`Content-Type: application/pdf`), not JSON — there is no JSON success shape for this endpoint. Route/container/FASTag sections each show a plain "unavailable"/"no data" message when that data doesn't exist, rather than failing the request.
+
+This same PDF is also what gets emailed automatically, **once**, to a dispatch's group's `additional_emails`, when the trip is marked completed (`pending_servey` flips to `1`). Previously, completion triggered a bare text-only reminder email with no report attached at all, and — since it re-checked every minute with no "already sent" tracking, looking only at the single latest completed dispatch — would have either spammed the same email every minute forever or silently skipped every dispatch that wasn't the most recent one. Both are fixed: `cargo_details.final_report_sent_at` gates the send to exactly once, and every newly-completed dispatch is processed, not just the latest.
+
+---
+
+## 9. Error shape reference
 
 | Shape | Seen on |
 |---|---|
@@ -570,11 +580,12 @@ This environment runs with debug mode on, so a raw error response here also incl
 
 ---
 
-## 9. Quick reference
+## 10. Quick reference
 
 | Method | Path |
 |---|---|
 | GET | `/dashboard` |
+| GET | `/cargo-details/{id}/final-report` |
 | GET | `/support-tickets` |
 | POST | `/support-tickets` |
 | GET | `/support-tickets/{id}` |
