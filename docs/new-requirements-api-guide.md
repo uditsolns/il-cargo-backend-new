@@ -29,6 +29,15 @@ Query params:
 
 `period=month&year=2025&month=8` returns August 2025, regardless of today's date. Sending `from_date`/`to_date` with no `period` is treated as `custom`.
 
+`graphs.*` buckets by day, week, or month depending on `period` — a daily point per day is unreadable over a quarter/year (~90/365 points). `graphs.granularity` tells you which was used, so label the axis accordingly (e.g. a `month`-granularity bucket's `date` is that month's 1st — render it as "Sep 2026", not the literal day):
+
+| `period` | `graphs.granularity` |
+|---|---|
+| `last_7_days`, `month` | `day` |
+| `quarter` | `week` |
+| `year` | `month` |
+| `custom` | `day` if the range is ≤31 days, `week` if ≤180 days, else `month` |
+
 **Success `200`** (`GET /dashboard`, default period):
 ```json
 {
@@ -37,6 +46,7 @@ Query params:
     "counts": { "customers": 21, "users": 40, "dispatches": 222, "apis": 3 },
     "api_usage_by_type": { "rc": 0, "dl": 0, "aadhaar": 0 },
     "graphs": {
+      "granularity": "day",
       "users": [
         { "date": "2026-09-02", "count": 0 },
         { "date": "2026-09-09", "count": 5 }
@@ -56,10 +66,26 @@ Query params:
     },
     "inspection_summary": { "total_inspections": 0, "compliance_data": [] }
   },
-  "filters": { "from_date": "2026-09-02", "to_date": "2026-09-09" }
+  "filters": { "period": "last_7_days", "from_date": "2026-09-02", "to_date": "2026-09-09" }
 }
 ```
-(`graphs.*` normally has one entry per day in the range — 8 entries for the default 7-day window; trimmed here to the two with non-zero counts.)
+(`graphs.*` normally has one entry per bucket in the range — 8 entries for the default 7-day window; trimmed here to the two with non-zero counts.)
+
+**Success `200`** (`GET /dashboard?period=year&year=2026`) — same shape, monthly buckets:
+```json
+{
+  "data": {
+    "graphs": {
+      "granularity": "month",
+      "users": [
+        { "date": "2026-01-01", "count": 4 },
+        { "date": "2026-02-01", "count": 7 }
+      ]
+    }
+  },
+  "filters": { "period": "year", "from_date": "2026-01-01", "to_date": "2026-12-31" }
+}
+```
 
 `counts` is always the all-time total — it never changes with `period`. Everything else (`graphs`, `inspection_summary`, `api_usage_by_type`) is filtered to the resolved range. `api_usage_by_type` counts RC/DL verification calls and sums both Aadhaar OTP steps into one `aadhaar` number.
 

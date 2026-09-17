@@ -16,9 +16,51 @@ class DashboardPeriod
     public const DEFAULT = 'last_7_days';
 
     /**
-     * @return array{0: Carbon, 1: Carbon}
+     * @return array{0: Carbon, 1: Carbon, 2: string}
      */
     public static function resolve(Request $request): array
+    {
+        $period = self::resolvePeriodLabel($request);
+
+        [$from, $to] = match ($period) {
+            'month' => self::month((int) $request->input('year'), (int) $request->input('month')),
+            'quarter' => self::quarter((int) $request->input('year'), (int) $request->input('quarter')),
+            'year' => self::year((int) $request->input('year')),
+            'custom' => self::custom($request),
+            default => [Carbon::now()->subDays(7)->startOfDay(), Carbon::now()->endOfDay()],
+        };
+
+        return [$from, $to, $period];
+    }
+
+    /**
+     * How coarsely a time-series graph should bucket this period - a daily
+     * point per day is unreadable over a quarter/year (~90/365 points), so
+     * longer periods bucket by week/month instead. A custom range picks by
+     * its own span, since it isn't one of the named periods.
+     */
+    public static function granularity(string $period, Carbon $from, Carbon $to): string
+    {
+        return match ($period) {
+            'quarter' => 'week',
+            'year' => 'month',
+            'custom' => self::granularityForSpan($from, $to),
+            default => 'day',
+        };
+    }
+
+    private static function granularityForSpan(Carbon $from, Carbon $to): string
+    {
+        $days = $from->diffInDays($to);
+
+        return match (true) {
+            $days <= 31 => 'day',
+            $days <= 180 => 'week',
+            default => 'month',
+        };
+    }
+
+    private static function resolvePeriodLabel(Request $request): string
     {
         $period = $request->input('period');
 
@@ -26,15 +68,7 @@ class DashboardPeriod
             $period = 'custom';
         }
 
-        $period ??= self::DEFAULT;
-
-        return match ($period) {
-            'month' => self::month((int) $request->input('year'), (int) $request->input('month')),
-            'quarter' => self::quarter((int) $request->input('year'), (int) $request->input('quarter')),
-            'year' => self::year((int) $request->input('year')),
-            'custom' => self::custom($request),
-            default => [Carbon::now()->subDays(7)->startOfDay(), Carbon::now()->endOfDay()],
-        };
+        return $period ?? self::DEFAULT;
     }
 
     private static function month(int $year, int $month): array

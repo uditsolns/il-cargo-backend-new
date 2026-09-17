@@ -26,7 +26,8 @@ class DashboardController extends Controller
             'to_date' => 'nullable|date|after_or_equal:from_date',
         ]);
 
-        [$fromDate, $toDate] = DashboardPeriod::resolve($request);
+        [$fromDate, $toDate, $period] = DashboardPeriod::resolve($request);
+        $granularity = DashboardPeriod::granularity($period, $fromDate, $toDate);
 
         // Apply date filter to base queries
         $dateFilter = function ($query) use ($fromDate, $toDate) {
@@ -40,10 +41,11 @@ class DashboardController extends Controller
                 // everything else below. See getCounts()'s own docblock.
                 'counts' => $this->getCounts(),
                 'api_usage_by_type' => $this->getApiUsageByType($fromDate, $toDate),
-                'graphs' => $this->getGraphData($fromDate, $toDate),
+                'graphs' => $this->getGraphData($fromDate, $toDate, $granularity),
                 'inspection_summary' => $this->getInspectionSummary($dateFilter),
             ],
             'filters' => [
+                'period' => $period,
                 'from_date' => $fromDate->format('Y-m-d'),
                 'to_date' => $toDate->format('Y-m-d'),
             ]
@@ -97,63 +99,66 @@ class DashboardController extends Controller
         ];
     }
 
-    private function getGraphData($fromDate, $toDate)
+    /**
+     * A daily point per day is unreadable over a quarter/year (~90/365
+     * points) - see DashboardPeriod::granularity(). Every bucket key is
+     * still a plain 'Y-m-d' date (the bucket's start day), regardless of
+     * granularity - the 'granularity' field tells the caller how to label
+     * it (e.g. a month bucket's key is that month's 1st, to be shown as
+     * "Sep 2026"), rather than changing the key's format per granularity.
+     */
+    private function getGraphData($fromDate, $toDate, string $granularity)
     {
-        // Create date range
-        $period = CarbonPeriod::create($fromDate, '1 day', $toDate);
-        $dateRange = [];
-        foreach ($period as $date) {
-            $dateRange[$date->format('Y-m-d')] = 0;
-        }
+        $bucketExpr = $this->bucketExpression($granularity);
+        $dateRange = $this->buildBucketRange($fromDate, $toDate, $granularity);
 
-        // Users graph data
         $usersData = User::select(
-            DB::raw('DATE(created_at) as date'),
+            DB::raw("{$bucketExpr} as bucket"),
             DB::raw('COUNT(*) as count')
         )
             ->whereBetween('created_at', [$fromDate, $toDate])
-            ->groupBy('date')
-            ->orderBy('date')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
             ->get()
-            ->pluck('count', 'date')
+            ->pluck('count', 'bucket')
             ->toArray();
 
         // Customers (groups) graph data
         $customersData = Group::select(
-            DB::raw('DATE(created_at) as date'),
+            DB::raw("{$bucketExpr} as bucket"),
             DB::raw('COUNT(*) as count')
         )
             ->whereBetween('created_at', [$fromDate, $toDate])
-            ->groupBy('date')
-            ->orderBy('date')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
             ->get()
-            ->pluck('count', 'date')
+            ->pluck('count', 'bucket')
             ->toArray();
 
         $cargoDetailsData = CargoDetail::select(
-            DB::raw('DATE(created_at) as date'),
+            DB::raw("{$bucketExpr} as bucket"),
             DB::raw('COUNT(*) as count')
-        )-> whereBetween('created_at', [$fromDate, $toDate])
-            ->groupBy('date')
-            ->orderBy('date')
+        )->whereBetween('created_at', [$fromDate, $toDate])
+            ->groupBy('bucket')
+            ->orderBy('bucket')
             ->get()
-            ->pluck('count', 'date')
+            ->pluck('count', 'bucket')
             ->toArray();
 
         $invoiceValueData = CargoDetail::select(
-            DB::raw('DATE(created_at) as date'),
+            DB::raw("{$bucketExpr} as bucket"),
             DB::raw('SUM(CAST(invoice_value as DECIMAL(15,2))) as total_value')
         )
             ->whereBetween('created_at', [$fromDate, $toDate])
             ->whereNotNull('invoice_value')
             ->where('invoice_value', '!=', '')
-            ->groupBy('date')
-            ->orderBy('date')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
             ->get()
-            ->pluck('total_value', 'date')
+            ->pluck('total_value', 'bucket')
             ->toArray();
 
-        // Merge with date range to fill missing dates with 0
+        // Merge with bucket range to fill missing buckets with 0
         $usersGraph = array_replace($dateRange, $usersData);
         $customersGraph = array_replace($dateRange, $customersData);
         $cargoDetailsGraph = array_replace($dateRange, $cargoDetailsData);
@@ -161,6 +166,7 @@ class DashboardController extends Controller
 
         // Format for frontend
         return [
+            'granularity' => $granularity,
             'users' => array_map(function ($date, $count) {
                 return [
                     'date' => $date,
@@ -186,6 +192,31 @@ class DashboardController extends Controller
                 ];
             }, array_keys($invoiceValueGraph), $invoiceValueGraph),
         ];
+    }
+
+    private function bucketExpression(string $granularity): string
+    {
+        return match ($granularity) {
+            'week' => 'DATE(DATE_SUB(created_at, INTERVAL WEEKDAY(created_at) DAY))',
+            'month' => "DATE_FORMAT(created_at, '%Y-%m-01')",
+            default => 'DATE(created_at)',
+        };
+    }
+
+    private function buildBucketRange(Carbon $fromDate, Carbon $toDate, string $granularity): array
+    {
+        [$start, $step] = match ($granularity) {
+            'week' => [$fromDate->copy()->startOfWeek(Carbon::MONDAY), '1 week'],
+            'month' => [$fromDate->copy()->startOfMonth(), '1 month'],
+            default => [$fromDate->copy(), '1 day'],
+        };
+
+        $range = [];
+        foreach (CarbonPeriod::create($start, $step, $toDate) as $date) {
+            $range[$date->format('Y-m-d')] = 0;
+        }
+
+        return $range;
     }
 
     private function getInspectionSummary($dateFilter)
