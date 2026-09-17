@@ -3,7 +3,6 @@
 namespace App\Http\Requests;
 
 use App\Models\Group;
-use App\Support\UlipIdentifierValidation;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -31,7 +30,6 @@ class StoreCargoDetailRequest extends FormRequest
             "cargo_unit_serial_no" => [
                 "required",
                 "string",
-                "regex:" . UlipIdentifierValidation::CONTAINER_NUMBER_REGEX,
                 "unique:cargo_details,cargo_unit_serial_no",
             ],
             "group_id" => $isChannelPartnerFlow
@@ -53,7 +51,6 @@ class StoreCargoDetailRequest extends FormRequest
     public function messages(): array
     {
         return [
-            "cargo_unit_serial_no.regex" => "The cargo unit serial no must be a valid container number (e.g. HLBU8163708).",
             "cargo_unit_serial_no.unique" => "This cargo unit serial no has already been used on another dispatch.",
         ];
     }

@@ -533,10 +533,13 @@
     @endif
 </div>
 
-{{-- Container Tracking (NEW) --}}
-<div class="section">
-    <h2>Container Tracking</h2>
-    @if(isset($containerTrackingEvents) && count($containerTrackingEvents) > 0)
+{{-- Container Tracking (NEW) - only shown when this dispatch actually has a
+     valid-format container number and tracking data was fetched for it; not
+     every dispatch is a container shipment (could be a truck or other unit),
+     so there's no "unavailable" fallback here, unlike FASTag above. --}}
+@if(isset($containerTrackingEvents) && count($containerTrackingEvents) > 0)
+    <div class="section">
+        <h2>Container Tracking</h2>
         @foreach($containerTrackingEvents as $index => $event)
             <table class="kv-table">
                 <tbody>
@@ -554,12 +557,8 @@
                 </tbody>
             </table>
         @endforeach
-    @else
-        <div class="alert alert-info">
-            <strong>No container tracking data available</strong> for this dispatch's container at the time this report was generated.
-        </div>
-    @endif
-</div>
+    </div>
+@endif
 
 {{-- Photographs Section --}}
 @if(isset($cargo['photographs']) && count($cargo['photographs']) > 0)

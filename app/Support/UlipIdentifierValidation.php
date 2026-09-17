@@ -3,11 +3,13 @@
 namespace App\Support;
 
 /**
- * The two identifier formats ULIP lookups need - shared between dispatch
- * creation (container number format/uniqueness) and the FASTag/container
- * polling job (pre-flight validation before calling the proxy), so the two
- * can never drift apart. Patterns match ulip-apis's own request rules
- * (ContainerTrackingRequest, FastagRequest).
+ * The two identifier formats ULIP lookups need, used as pre-flight
+ * validation before the FASTag/container polling job calls the proxy -
+ * cargo_unit_serial_no/veh_reg_no are free-form on dispatch creation (not
+ * every dispatch is an ISO container/has a plate in this exact shape), so
+ * this only gates whether a *lookup* is attempted, not what's stored.
+ * Patterns match ulip-apis's own request rules (ContainerTrackingRequest,
+ * FastagRequest).
  */
 class UlipIdentifierValidation
 {

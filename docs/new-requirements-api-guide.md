@@ -252,7 +252,7 @@ Same endpoint/multipart form as before. New/changed validation only:
 
 | Field | Rules |
 |---|---|
-| `cargo_unit_serial_no` | required, must match `^[A-Z]{4}[0-9]{4,7}$`, globally unique across all dispatches |
+| `cargo_unit_serial_no` | required, globally unique across all dispatches — **no format requirement**: it isn't always an ISO container number (could be a truck or other unit), so the value is free-form |
 | `group_id` | required, must exist — **except** Channel Partner accounts, unchanged for them |
 | `estimated_date_of_arrival` | required, date, must be `>= date_transit` |
 
@@ -278,11 +278,6 @@ Same endpoint/multipart form as before. New/changed validation only:
 **Error `422`** — duplicate serial no:
 ```json
 { "message": "The given data was invalid.", "errors": { "cargo_unit_serial_no": ["This cargo unit serial no has already been used on another dispatch."] } }
-```
-
-**Error `422`** — invalid serial-no format:
-```json
-{ "message": "The given data was invalid.", "errors": { "cargo_unit_serial_no": ["The cargo unit serial no must be a valid container number (e.g. HLBU8163708)."] } }
 ```
 
 **Error `422`** — missing `group_id`:
@@ -560,7 +555,7 @@ Body: `{"answers": {"<question_id>": <option_id>, ...}}` — one entry per quest
 
 `GET /cargo-details/{id}/final-report` — everything the existing on-demand report (`GET /cargo-details/{id}/report`) has, plus a shipment route map (origin→destination, straight connecting line) and any FASTag/container tracking data collected for the dispatch. Same access control as `GET /cargo-details/{id}` (§5) — `404` if not in your group — unlike the older `/report` endpoint, which currently has none.
 
-Response is a raw PDF stream (`Content-Type: application/pdf`), not JSON — there is no JSON success shape for this endpoint. Route/container/FASTag sections each show a plain "unavailable"/"no data" message when that data doesn't exist, rather than failing the request.
+Response is a raw PDF stream (`Content-Type: application/pdf`), not JSON — there is no JSON success shape for this endpoint. Route and FASTag sections show a plain "unavailable"/"no data" message when that data doesn't exist, rather than failing the request. The Container Tracking section is different: since `cargo_unit_serial_no` isn't always a container (see §4), that section is omitted entirely — no heading, no "no data" message — whenever no container tracking data has been collected for the dispatch, rather than implying every dispatch should have one.
 
 This same PDF is also what gets emailed automatically, **once**, to a dispatch's group's `additional_emails`, when the trip is marked completed (`pending_servey` flips to `1`). Previously, completion triggered a bare text-only reminder email with no report attached at all, and — since it re-checked every minute with no "already sent" tracking, looking only at the single latest completed dispatch — would have either spammed the same email every minute forever or silently skipped every dispatch that wasn't the most recent one. Both are fixed: `cargo_details.final_report_sent_at` gates the send to exactly once, and every newly-completed dispatch is processed, not just the latest.
 
