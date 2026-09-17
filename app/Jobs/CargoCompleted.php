@@ -39,20 +39,38 @@ class CargoCompleted implements ShouldQueue
         }
 
         foreach ($completedDispatches as $cargoDetail) {
-            $emails = $cargoDetail->group?->additional_emails ?? [];
-
-            if (empty($emails)) {
-                Log::info("CargoCompleted: no additional_emails configured for group {$cargoDetail->group_id}, dispatch {$cargoDetail->dispatch_id} - marking processed without sending.");
-                $cargoDetail->update(['final_report_sent_at' => now()]);
-                continue;
+            try {
+                $this->processDispatch($cargoDetail);
+            } catch (\Throwable $e) {
+                // Building the PDF fetches the route map over the network
+                // (dompdf, isRemoteEnabled) - a transient failure there (or
+                // anywhere else in this dispatch's processing) must not
+                // abort every other dispatch still queued in this run.
+                // final_report_sent_at stays null, so this one is retried
+                // on the next run instead.
+                Log::error("CargoCompleted: failed to process dispatch {$cargoDetail->dispatch_id} (id={$cargoDetail->id}) - will retry next run.", [
+                    'exception' => $e,
+                ]);
             }
-
-            foreach ($emails as $email) {
-                Mail::to($email)->send(new FinalReportMail($cargoDetail));
-                Log::info("CargoCompleted: final report sent to {$email} for dispatch {$cargoDetail->dispatch_id}.");
-            }
-
-            $cargoDetail->update(['final_report_sent_at' => now()]);
         }
+    }
+
+    private function processDispatch(CargoDetail $cargoDetail): void
+    {
+        $emails = $cargoDetail->group?->additional_emails ?? [];
+
+        if (empty($emails)) {
+            Log::info("CargoCompleted: no additional_emails configured for group {$cargoDetail->group_id}, dispatch {$cargoDetail->dispatch_id} - marking processed without sending.");
+            $cargoDetail->update(['final_report_sent_at' => now()]);
+            return;
+        }
+
+        // One send() to every recipient at once, not one send() per
+        // recipient - FinalReportMail::build() (PDF + route map fetch)
+        // only runs once this way instead of once per address.
+        Mail::to($emails)->send(new FinalReportMail($cargoDetail));
+        Log::info('CargoCompleted: final report sent to ' . implode(', ', $emails) . " for dispatch {$cargoDetail->dispatch_id}.");
+
+        $cargoDetail->update(['final_report_sent_at' => now()]);
     }
 }
